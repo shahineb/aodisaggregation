@@ -17,8 +17,12 @@ def compute_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn):
 
     """
     scores_2d = compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn)
-    scores_3d = compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d)
-    output = {'2d': scores_2d, '3d': scores_3d}
+    scores_3d_isotropic = compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d)
+    scores_3d_vertical = compute_3d_vertical_metrics(prediction_3d, groundtruth_3d)
+    output = {'2d': scores_2d,
+              '3d': {'isotropic': scores_3d_isotropic,
+                     'vertical': scores_3d_vertical}
+              }
     return output
 
 
