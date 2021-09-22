@@ -20,21 +20,22 @@ def plot_2d_covariates(dataset, time_idx, covariates_keys):
     lat = dataset.lat.values
 
     nrows = len(covariates_keys)
-    fig, ax = plt.subplots(nrows, 1, figsize=(5 * nrows, 5 * nrows))
+    fig, ax = plt.subplots(nrows, 1, figsize=(10, 5 * nrows))
     cmap = 'magma'
-    n_x_ticks = 100
-    n_y_ticks = 100
+    n_x_ticks = 10
+    n_y_ticks = 10
     title_fontsize = 20
     labels_fontsize = 12
+    ticks_fontsize = 12
     cbar_fontsize = 12
 
     for i in range(nrows):
         key = covariates_keys[i]
         im = ax[i].imshow(field_set[key].values, cmap=cmap)
-        ax[i].set_xticks(range(0, len(lon), n_x_ticks))
-        ax[i].set_xticklabels(lon[::n_x_ticks], Fontsize=cbar_fontsize)
-        ax[i].set_yticks(range(0, len(lat), n_y_ticks))
-        ax[i].set_yticklabels(lat[::n_x_ticks], rotation=10, Fontsize=cbar_fontsize)
+        ax[i].set_xticks(range(0, len(lon), len(lon) // n_x_ticks))
+        ax[i].set_xticklabels(np.round(lon[::len(lon) // n_x_ticks], 1), fontsize=ticks_fontsize)
+        ax[i].set_yticks(range(0, len(lat), len(lat) // n_y_ticks))
+        ax[i].set_yticklabels(np.round(lat[::len(lat) // n_y_ticks], 1), rotation=10, fontsize=ticks_fontsize)
         ax[i].set_title(key, fontsize=title_fontsize)
         cbar = plt.colorbar(im, orientation="vertical", ax=ax[i], shrink=0.8)
         cbar.ax.tick_params(labelsize=cbar_fontsize)
@@ -65,19 +66,20 @@ def plot_3d_covariates_slices(dataset, lat_idx, time_idx, covariates_keys):
     nrows = len(covariates_keys)
     fig, ax = plt.subplots(nrows, 1, figsize=(2 * nrows, 4 * nrows))
     cmap = 'magma'
-    n_x_ticks = 20
-    n_y_ticks = 20
+    n_x_ticks = 10
+    n_y_ticks = 4
     title_fontsize = 26
     labels_fontsize = 18
     cbar_fontsize = 18
+    ticks_fontsize = 14
 
     for i in range(nrows):
         key = covariates_keys[i]
         im = ax[i].imshow(slice_set[key].values, cmap=cmap)
-        ax[i].set_xticks(range(0, len(lon), n_x_ticks))
-        ax[i].set_xticklabels(lon[::n_x_ticks])
-        ax[i].set_yticks(range(0, len(h), n_y_ticks))
-        ax[i].set_yticklabels(h[::n_x_ticks], rotation=10)
+        ax[i].set_xticks(range(0, len(lon), len(lon) // n_x_ticks))
+        ax[i].set_xticklabels(lon[::len(lon) // n_x_ticks], fontsize=ticks_fontsize)
+        ax[i].set_yticks(range(0, len(h), len(h) // n_y_ticks))
+        ax[i].set_yticklabels(h[::len(h) // n_y_ticks], fontsize=ticks_fontsize, rotation=10)
         ax[i].set_title(key, fontsize=title_fontsize)
         cbar = plt.colorbar(im, orientation="vertical", ax=ax[i], shrink=0.7)
         cbar.ax.tick_params(labelsize=cbar_fontsize)
