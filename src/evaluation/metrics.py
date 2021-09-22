@@ -96,7 +96,7 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
     corr = np.mean([spearman_correlation(pred, gt) for (pred, gt) in zip(prediction_3d, groundtruth_3d)])
 
     # Return metrics dictionnary
-    output = {'rmse': rmse.item(), 'mae': mae.item(), 'corr': corr}
+    output = {'rmse': rmse.item(), 'mae': mae.item(), 'corr': float(corr)}
     return output
 
 
