@@ -1,7 +1,7 @@
 """
-Description : Runs aggregate ridge regression experiment
+Description : Runs two-stage ridge regression experiment
 
-Usage: run_ridge_experiment.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_two_staged_ridge_experiment.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -15,21 +15,21 @@ from docopt import docopt
 import torch
 import matplotlib.pyplot as plt
 import src.preprocessing as preproc
-from src.models import AggregateRidgeRegression
+from src.models import TwoStageAggregateRidgeRegression
 from src.evaluation import metrics, visualization
 
 
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
-    dataset, standard_dataset, x_by_column_std, x_std, z_grid, z_std, gt_grid, h, h_std = make_datasets(cfg=cfg)
+    dataset, standard_dataset, x_by_bag_std, x_std, y_grid_std, y_std, z_grid, z_std, gt_grid, h, h_std = make_datasets(cfg=cfg)
 
     # Instantiate model
     model = make_model(cfg=cfg, h=h_std)
     logging.info(f"{model}")
 
     # Fit model
-    model.fit(x_by_column_std, z_std)
+    model.fit(x_by_bag_std, y_std, z_std)
     logging.info("Fitted model")
 
     # Run prediction
@@ -47,6 +47,7 @@ def main(args, cfg):
     dump_scores(prediction_3d=prediction_3d,
                 groundtruth_3d=gt_grid,
                 targets_2d=z_grid,
+                h_std=h_std,
                 aggregate_fn=trpz,
                 output_dir=args['--o'])
 
@@ -70,19 +71,21 @@ def make_datasets(cfg):
 
     # Convert into pytorch tensors
     x_grid_std = preproc.make_3d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['3d_covariates'])
-    z_grid_std = preproc.make_2d_tensor(dataset=standard_dataset, variable_key=cfg['dataset']['target'])
-    h_grid_std = preproc.make_3d_tensor(dataset=standard_dataset, variable_key='height')
-    z_grid = preproc.make_2d_tensor(dataset=dataset, variable_key=cfg['dataset']['target'])
-    gt_grid = preproc.make_3d_tensor(dataset=dataset, variable_key=cfg['dataset']['groundtruth'])
-    h_grid = preproc.make_3d_tensor(dataset=dataset, variable_key='height')
+    y_grid_std = preproc.make_2d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['2d_covariates'])
+    z_grid_std = preproc.make_2d_tensor(dataset=standard_dataset, target_variable_key=cfg['dataset']['target'])
+    h_grid_std = preproc.make_3d_tensor(dataset=standard_dataset, groundtruth_variable_key='h')
+    z_grid = preproc.make_2d_tensor(dataset=dataset, target_variable_key=cfg['dataset']['target'])
+    gt_grid = preproc.make_3d_tensor(dataset=dataset, groundtruth_variable_key=cfg['dataset']['groundtruth'])
+    h_grid = preproc.make_3d_tensor(dataset=dataset, groundtruth_variable_key='h')
 
     # Reshape tensors
     x_by_column_std = x_grid_std.reshape(-1, x_grid_std.size(-2), x_grid_std.size(-1))
     x_std = x_by_column_std.reshape(-1, x_grid_std.size(-1))
+    y_std = y_grid_std.reshape(-1, y_grid_std.size(-1))
     z_std = z_grid_std.flatten()
     h = h_grid.reshape(-1, x_grid_std.size(-2))
     h_std = h_grid_std.reshape(-1, x_grid_std.size(-2))
-    return dataset, standard_dataset, x_by_column_std, x_std, z_grid, z_std, gt_grid, h, h_std
+    return dataset, standard_dataset, x_by_column_std, x_std, y_grid_std, y_std, z_grid, z_std, gt_grid, h, h_std
 
 
 def make_model(cfg, h):
@@ -92,9 +95,11 @@ def make_model(cfg, h):
         return aggregated_grid
 
     # Instantiate model
-    model = AggregateRidgeRegression(lbda=cfg['model']['lbda'],
-                                     aggregate_fn=trpz,
-                                     fit_intercept=cfg['model']['fit_intercept'])
+    model = TwoStageAggregateRidgeRegression(lbda_2d=cfg['model']['lbda_2d'],
+                                             lbda_3d=cfg['model']['lbda_3d'],
+                                             aggregate_fn=trpz,
+                                             fit_intercept_2d=cfg['model']['fit_intercept_2d'],
+                                             fit_intercept_3d=cfg['model']['fit_intercept_3d'])
     return model
 
 
