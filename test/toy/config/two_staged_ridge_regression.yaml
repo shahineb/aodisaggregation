@@ -14,11 +14,6 @@ dataset:
     - burden_H2SO4
     - burden_SO4
     - burden_BC
-    # - burden_OC
-    # - burden_SS
-    # - burden_DU
-    # - burden_WAT
-    # - abso4
 
   # Variables to use as 3D covariates
   3d_covariates:

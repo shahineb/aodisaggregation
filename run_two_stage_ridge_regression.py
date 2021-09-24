@@ -22,14 +22,14 @@ from src.evaluation import metrics, visualization
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
-    dataset, standard_dataset, x_by_bag_std, x_std, y_grid_std, y_std, z_grid, z_std, gt_grid, h, h_std = make_datasets(cfg=cfg)
+    dataset, standard_dataset, x_by_column_std, x_std, y_grid_std, y_std, z_grid, z_std, gt_grid, h, h_std = make_datasets(cfg=cfg)
 
     # Instantiate model
     model = make_model(cfg=cfg, h=h_std)
     logging.info(f"{model}")
 
     # Fit model
-    model.fit(x_by_bag_std, y_std, z_std)
+    model.fit(x_by_column_std, y_std, z_std)
     logging.info("Fitted model")
 
     # Run prediction
@@ -47,7 +47,6 @@ def main(args, cfg):
     dump_scores(prediction_3d=prediction_3d,
                 groundtruth_3d=gt_grid,
                 targets_2d=z_grid,
-                h_std=h_std,
                 aggregate_fn=trpz,
                 output_dir=args['--o'])
 
@@ -72,11 +71,11 @@ def make_datasets(cfg):
     # Convert into pytorch tensors
     x_grid_std = preproc.make_3d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['3d_covariates'])
     y_grid_std = preproc.make_2d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['2d_covariates'])
-    z_grid_std = preproc.make_2d_tensor(dataset=standard_dataset, target_variable_key=cfg['dataset']['target'])
-    h_grid_std = preproc.make_3d_tensor(dataset=standard_dataset, groundtruth_variable_key='h')
-    z_grid = preproc.make_2d_tensor(dataset=dataset, target_variable_key=cfg['dataset']['target'])
-    gt_grid = preproc.make_3d_tensor(dataset=dataset, groundtruth_variable_key=cfg['dataset']['groundtruth'])
-    h_grid = preproc.make_3d_tensor(dataset=dataset, groundtruth_variable_key='h')
+    z_grid_std = preproc.make_2d_tensor(dataset=standard_dataset, variable_key=cfg['dataset']['target'])
+    h_grid_std = preproc.make_3d_tensor(dataset=standard_dataset, variable_key='height')
+    z_grid = preproc.make_2d_tensor(dataset=dataset, variable_key=cfg['dataset']['target'])
+    gt_grid = preproc.make_3d_tensor(dataset=dataset, variable_key=cfg['dataset']['groundtruth'])
+    h_grid = preproc.make_3d_tensor(dataset=dataset, variable_key='height')
 
     # Reshape tensors
     x_by_column_std = x_grid_std.reshape(-1, x_grid_std.size(-2), x_grid_std.size(-1))
