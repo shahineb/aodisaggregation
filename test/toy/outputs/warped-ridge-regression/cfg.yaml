@@ -1,0 +1,21 @@
+dataset:
+  3d_covariates:
+  - ATTBETA_TOT_SPACE_533nm
+  - relhum
+  groundtruth: ALFA_AER_533nm
+  path: data/all_aod_global_updated_ds_06_06_2008.nc
+  target: ALFA_AER_533nm_2D
+evaluation:
+  slice_latitude_idx: 20
+  slice_time_idx: 0
+  slices_covariates:
+  - ATTBETA_TOT_SPACE_533nm
+  - relhum
+model:
+  fit_intercept: false
+  lbda: 0.001
+  seed: 42
+  transform: square
+training:
+  lr: 1
+  n_epochs: 100

@@ -1,0 +1,61 @@
+################################################################################
+#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH WARPED AGGREGATE RIDGE REGRESSION
+################################################################################
+
+# DATASET
+dataset:
+  # Path to main model data .nc file
+  path: data/all_aod_global_updated_ds_06_06_2008.nc
+
+  # Variables to use as 3D covariates
+  3d_covariates:
+    - ATTBETA_TOT_SPACE_533nm
+    - relhum
+
+  # Variable to use as 2D aggregate target
+  target: ALFA_AER_533nm_2D
+
+  # Variable corresponding to unobserved groundtruth 3D field
+  groundtruth: ALFA_AER_533nm
+
+
+
+# MODEL SPECIFICATIONS
+model:
+  # L2 regularization weight
+  lbda: 0.001
+
+  # Whether to use bias or not
+  fit_intercept: False
+
+  # Warping transformation
+  transform: 'square'
+
+  # Weights initialization seed
+  seed: 42
+
+
+
+
+# TRAINING
+training:
+  # Number of training epochs
+  n_epochs: 100
+
+  # Learning rate
+  lr: 1
+
+
+
+# EVALUATION
+evaluation:
+  # Latitude index of slice to plot
+  slice_latitude_idx: 20
+
+  # Time index of slice to plot
+  slice_time_idx: 0
+
+  # List of variables slices to plot
+  slices_covariates:
+    - ATTBETA_TOT_SPACE_533nm
+    - relhum

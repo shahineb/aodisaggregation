@@ -53,32 +53,32 @@ def make_2d_covariates_tensors(dataset, variables_keys):
     return grid
 
 
-def make_2d_target_tensor(dataset, target_variable_key):
-    """Makes (time, lat, lon) tensor of 2D+t aggregate targets
+def make_2d_tensor(dataset, variable_key):
+    """Makes (time, lat, lon) tensor of 2D+t values
 
     Args:
         dataset (xr.Dataset): source dataset
-        target_variable_key (str): name of variable to use as target
+        variable_key (str): name of variable to use
 
     Returns:
         type: torch.Tensor
 
     """
-    grid = torch.from_numpy(dataset[target_variable_key].values).float()
+    grid = torch.from_numpy(dataset[variable_key].values).float()
     return grid
 
 
-def make_3d_groundtruth_tensor(dataset, groundtruth_variable_key):
-    """Makes (time, lat, lon, lev) tensor of 3D+t groundtruth field
+def make_3d_tensor(dataset, variable_key):
+    """Makes (time, lat, lon, lev) tensor of 3D+t values
 
     Args:
         dataset (xr.Dataset): source dataset formatted as (time, lev, lat, lon)
-        groundtruth_variable_key (str): name of variable to use as groundtruth
+        variable_key (str): name of variable to use
 
     Returns:
         type: torch.Tensor
 
     """
-    grid = torch.from_numpy(dataset[groundtruth_variable_key].values).float()
+    grid = torch.from_numpy(dataset[variable_key].values).float()
     grid = grid.permute(0, 2, 3, 1)
     return grid
