@@ -206,4 +206,4 @@ class WarpedAggregateRidgeRegression(nn.Module):
         Returns:
             type: torch.Tensor
         """
-        return self.alpha * torch.dot(self.beta, self.beta)
+        return self.lbda * torch.dot(self.beta, self.beta)
