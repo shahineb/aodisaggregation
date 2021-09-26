@@ -9,7 +9,7 @@ class AggregateRidgeRegression(nn.Module):
         *** Current implementation assumes all columns have same size ***
 
     Args:
-        lbda (float): regularization weight, greater = stronger L2 penalization
+        lbda (float): regularization weight, greater = stronger L2 penalty
         aggregate_fn (callable): aggregation operator
         fit_intercept (bool): if True, pads inputs with constant offset
     """
@@ -70,7 +70,7 @@ class AggregateRidgeRegression(nn.Module):
 
 
 class TwoStageAggregateRidgeRegression(nn.Module):
-    """Ridge Regression model when aggregate targets only are observed
+    """Two-stage Ridge Regression model when aggregate targets only are observed
 
         *** Current implementation assumes all columns have same size ***
 
@@ -79,8 +79,8 @@ class TwoStageAggregateRidgeRegression(nn.Module):
             (2): Regresses first step againt aggregate targetrs
 
     Args:
-        lbda_2d (float): regularization weight for first stage, greater = stronger L2 penalization
-        lbda_3d (float): regularization weight for second stage, greater = stronger L2 penalization
+        lbda_2d (float): regularization weight for first stage, greater = stronger L2 penalty
+        lbda_3d (float): regularization weight for second stage, greater = stronger L2 penalty
         aggregate_fn (callable): aggregation operator
         fit_intercept_2d (bool): if True, pads 2D inputs with constant offset
         fit_intercept_3d (bool): if True, pads 3D inputs with constant offset
@@ -152,3 +152,58 @@ class TwoStageAggregateRidgeRegression(nn.Module):
         if self.fit_intercept_3d:
             x = self.pad_input(x)
         return x @ self.beta
+
+
+class WarpedAggregateRidgeRegression(nn.Module):
+    """Ridge regression warped with link function when aggregate targets only are observed
+
+    Args:
+        lbda (float): regularization weight, greater = stronger L2 penalty
+        transform (callable): link function to apply to prediction
+        aggregate_fn (callable): aggregation operator
+        ndim (int): dimensionality of input samples
+        fit_intercept (bool): if True, fits a constant offset term
+    """
+    def __init__(self, lbda, transform, aggregate_fn, ndim, fit_intercept=False):
+        super().__init__()
+        self.lbda = lbda
+        self.transform = transform
+        self.aggregate_fn = aggregate_fn
+        self.fit_intercept = fit_intercept
+        self.ndim = ndim
+        if self.fit_intercept:
+            self.bias = nn.Parameter(torch.zeros(1))
+        self.beta = nn.Parameter(torch.randn(self.ndim))
+
+    def forward(self, x):
+        """Runs prediction
+
+        Args:
+            x (torch.Tensor): (n_samples, ndim)
+                samples must not need to be organized by bags
+        Returns:
+            type: torch.Tensor
+        """
+        output = x @ self.beta
+        if self.fit_intercept:
+            output = output + self.bias
+        return self.transform(output)
+
+    def aggregate_prediction(self, prediction):
+        """Computes aggregation of individuals output prediction
+
+        Args:
+            prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
+        Returns:
+            type: torch.Tensor
+        """
+        aggregated_prediction = self.aggregate_fn(prediction)
+        return aggregated_prediction
+
+    def regularization_term(self):
+        """Square L2 norm of beta
+
+        Returns:
+            type: torch.Tensor
+        """
+        return self.alpha * torch.dot(self.beta, self.beta)

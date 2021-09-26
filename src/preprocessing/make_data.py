@@ -1,5 +1,5 @@
 """
-Variables naming nomenclature:
+Variables naming conventions:
 
     - `dataset` : original xarray dataset
     - `standard_dataset` : standardized xarray dataset (i.e. all variables have mean 0 and variance 1)
@@ -22,11 +22,21 @@ from .preprocess_model_data import load_dataset, standardize
 from .tensors import make_3d_covariates_tensors, make_2d_covariates_tensors, make_3d_tensor, make_2d_tensor
 
 
-field_names = ['dataset', 'standard_dataset', 'x_by_column_std', 'x_std', 'y_std', 'z_std', 'z_grid', 'gt_grid', 'h', 'h_std']
+field_names = ['dataset',
+               'standard_dataset',
+               'x_by_column_std',
+               'x_std',
+               'y_std',
+               'z',
+               'z_std',
+               'z_grid',
+               'gt_grid',
+               'h',
+               'h_std']
 Data = namedtuple(typename='Data', field_names=field_names, defaults=(None,) * len(field_names))
 
 
-def make_dataset(cfg, include_2d=False):
+def make_data(cfg, include_2d=False):
     """Prepares and formats data to be used for training and testing.
 
     Returns all data objects needed to run experiment encapsulated in a namedtuple.
@@ -44,7 +54,7 @@ def make_dataset(cfg, include_2d=False):
     # Load dataset as defined in main code
     dataset = load_dataset(cfg['dataset']['path'])
 
-    # Subset to speed up testing
+    # TODO : DISABLE IN FINAL VERSION – Subset to speed up testing
     dataset = dataset.isel(lat=slice(30, 60), lon=slice(35, 55), time=slice(0, 3))
 
     # Compute standardized version
@@ -58,7 +68,7 @@ def make_dataset(cfg, include_2d=False):
         y_grid_std, y_std = _make_y_tensors(cfg, dataset, standard_dataset)
 
     # Make 2D aggregate target tensors
-    z_grid_std, z_grid, z_std = _make_z_tensors(cfg, dataset, standard_dataset)
+    z_grid_std, z_grid, z_std, z = _make_z_tensors(cfg, dataset, standard_dataset)
 
     # Make 3D groundtruth tensor
     gt_grid = _make_groundtruth_tensors(cfg, dataset, standard_dataset)
@@ -71,6 +81,7 @@ def make_dataset(cfg, include_2d=False):
               'standard_dataset': standard_dataset,
               'x_by_column_std': x_by_column_std,
               'x_std': x_std,
+              'z': z,
               'z_std': z_std,
               'z_grid': z_grid,
               'gt_grid': gt_grid,
@@ -107,7 +118,7 @@ def _make_x_tensors(cfg, dataset, standard_dataset):
 
     # Reshape tensors
     x_by_column_std = x_grid_std.reshape(-1, x_grid_std.size(-2), x_grid_std.size(-1))
-    x_std = x_by_column_std.reshape(-1, x_grid_std.size(-1))
+    x_std = x_by_column_std.view(-1, x_grid_std.size(-1))
     return x_grid_std, x_by_column_std, x_std
 
 
@@ -130,7 +141,7 @@ def _make_y_tensors(cfg, dataset, standard_dataset):
     y_grid_std = make_2d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['2d_covariates'])
 
     # Reshape tensors
-    y_std = y_grid_std.reshape(-1, y_grid_std.size(-1))
+    y_std = y_grid_std.view(-1, y_grid_std.size(-1))
     return y_grid_std, y_std
 
 
@@ -150,6 +161,10 @@ def _make_z_tensors(cfg, dataset, standard_dataset):
             - (time * lat * lon) standardized tensor
             - Used for fitting
 
+        `z`:
+            - (time * lat * lon) non-standardized tensor
+            - Used for fitting
+
     Returns:
         type: torch.Tensor, torch.Tensor
 
@@ -159,8 +174,9 @@ def _make_z_tensors(cfg, dataset, standard_dataset):
     z_grid = make_2d_tensor(dataset=dataset, variable_key=cfg['dataset']['target'])
 
     # Reshape tensors
-    z_std = z_grid_std.flatten()
-    return z_grid_std, z_grid, z_std
+    z_std = z_grid_std.view(-1)
+    z = z_grid.view(-1)
+    return z_grid_std, z_grid, z_std, z
 
 
 def _make_groundtruth_tensors(cfg, dataset, standard_dataset):
@@ -207,6 +223,6 @@ def _make_h_tensors(cfg, dataset, standard_dataset):
     h_grid = make_3d_tensor(dataset=dataset, variable_key='height')
 
     # Reshape tensors
-    h = h_grid.reshape(-1, h_grid.size(-1))
     h_std = h_grid_std.reshape(-1, h_grid.size(-1))
+    h = h_grid.reshape(-1, h_grid.size(-1))
     return h_grid_std, h_grid, h_std, h

@@ -6,91 +6,42 @@ Usage: run_two_staged_ridge_experiment.py  [options] --cfg=<path_to_config> --o=
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
   --o=<output_dir>                 Output directory.
-  --plot                           Outputs scatter plots.
+  --plot                           Outputs plots.
 """
 import os
 import yaml
 import logging
 from docopt import docopt
 import torch
-import matplotlib.pyplot as plt
-import src.preprocessing as preproc
+from src.preprocessing import make_data
 from src.models import TwoStageAggregateRidgeRegression
-from src.evaluation import metrics, visualization
+from src.evaluation import dump_scores, dump_plots
 
 
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
-    dataset, standard_dataset, x_by_column_std, x_std, y_grid_std, y_std, z_grid, z_std, gt_grid, h, h_std = make_datasets(cfg=cfg)
+    data = make_data(cfg=cfg, include_2d=True)
 
     # Instantiate model
-    model = make_model(cfg=cfg, h=h_std)
+    model = make_model(cfg=cfg, data=data)
     logging.info(f"{model}")
 
     # Fit model
-    model.fit(x_by_column_std, y_std, z_std)
+    model = fit(model=model, data=data)
     logging.info("Fitted model")
 
     # Run prediction
-    with torch.no_grad():
-        prediction = model(x_std)
-        prediction_3d_std = prediction.reshape(*gt_grid.shape)
-        prediction_3d = z_grid.std() * (prediction_3d_std + z_grid.mean()) / h.std()
+    prediction_3d = predict(model=model, data=data)
 
-    # Define aggregation wrt non-standardized height for evaluation
-    def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=h.unsqueeze(-1), dim=-2)
-        return aggregated_grid
-
-    # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d,
-                groundtruth_3d=gt_grid,
-                targets_2d=z_grid,
-                aggregate_fn=trpz,
-                output_dir=args['--o'])
-
-    # Dump plots in output dir
-    if args['--plot']:
-        dump_plots(cfg=cfg,
-                   dataset=dataset,
-                   standard_dataset=standard_dataset,
-                   prediction_3d=prediction_3d,
-                   aggregate_fn=trpz,
-                   output_dir=args['--o'])
-        logging.info("Dumped plots")
+    # Run evaluation
+    evaluate(prediction_3d=prediction_3d, data=data, output_dir=args['--o'], plot=args['--plot'])
 
 
-def make_datasets(cfg):
-    # Load dataset
-    dataset = preproc.load_dataset(file_path=cfg['dataset']['path'])
-
-    # Compute standardized versions
-    standard_dataset = preproc.standardize(dataset)
-
-    # Convert into pytorch tensors
-    x_grid_std = preproc.make_3d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['3d_covariates'])
-    y_grid_std = preproc.make_2d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['2d_covariates'])
-    z_grid_std = preproc.make_2d_tensor(dataset=standard_dataset, variable_key=cfg['dataset']['target'])
-    h_grid_std = preproc.make_3d_tensor(dataset=standard_dataset, variable_key='height')
-    z_grid = preproc.make_2d_tensor(dataset=dataset, variable_key=cfg['dataset']['target'])
-    gt_grid = preproc.make_3d_tensor(dataset=dataset, variable_key=cfg['dataset']['groundtruth'])
-    h_grid = preproc.make_3d_tensor(dataset=dataset, variable_key='height')
-
-    # Reshape tensors
-    x_by_column_std = x_grid_std.reshape(-1, x_grid_std.size(-2), x_grid_std.size(-1))
-    x_std = x_by_column_std.reshape(-1, x_grid_std.size(-1))
-    y_std = y_grid_std.reshape(-1, y_grid_std.size(-1))
-    z_std = z_grid_std.flatten()
-    h = h_grid.reshape(-1, x_grid_std.size(-2))
-    h_std = h_grid_std.reshape(-1, x_grid_std.size(-2))
-    return dataset, standard_dataset, x_by_column_std, x_std, y_grid_std, y_std, z_grid, z_std, gt_grid, h, h_std
-
-
-def make_model(cfg, h):
+def make_model(cfg, data):
     # Create aggregation operator
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Instantiate model
@@ -102,42 +53,45 @@ def make_model(cfg, h):
     return model
 
 
-def dump_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn, output_dir):
-    scores = metrics.compute_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn)
-    dump_path = os.path.join(output_dir, 'scores.metrics')
-    with open(dump_path, 'w') as f:
-        yaml.dump(scores, f)
-    logging.info(f"Dumped scores at {dump_path}")
+def fit(model, data):
+    model.fit(data.x_by_column_std, data.y_std, data.z_std)
+    return model
 
 
-def dump_plots(cfg, dataset, standard_dataset, prediction_3d, aggregate_fn, output_dir):
-    # First plot - aggregate 2D prediction
-    dump_path = os.path.join(output_dir, 'aggregated_2d_prediction.png')
-    _ = visualization.plot_aggregate_2d_predictions(dataset=dataset,
-                                                    target_key=cfg['dataset']['target'],
-                                                    prediction_3d=prediction_3d,
-                                                    aggregate_fn=aggregate_fn)
-    plt.savefig(dump_path)
-    plt.close()
+def predict(model, data):
+    with torch.no_grad():
+        # Predict on standardized 3D covariates
+        prediction = model(data.x_std)
 
-    # Second plot - slices of covariates
-    dump_path = os.path.join(output_dir, 'covariates_slices.png')
-    _ = visualization.plot_3d_covariates_slices(dataset=dataset,
-                                                lat_idx=cfg['evaluation']['slice_latitude_idx'],
-                                                time_idx=cfg['evaluation']['slice_time_idx'],
-                                                covariates_keys=cfg['evaluation']['slices_covariates'])
-    plt.savefig(dump_path)
-    plt.close()
+        # Reshape as (time, lat, lon, lev) grid
+        prediction_3d_std = prediction.reshape(*data.gt_grid.shape)
 
-    # Third plot - prediction slice
-    dump_path = os.path.join(output_dir, '3d_prediction_slice.png')
-    _ = visualization.plot_vertical_prediction_slice(dataset=dataset,
-                                                     lat_idx=cfg['evaluation']['slice_latitude_idx'],
-                                                     time_idx=cfg['evaluation']['slice_time_idx'],
-                                                     groundtruth_key=cfg['dataset']['groundtruth'],
-                                                     prediction_3d=prediction_3d)
-    plt.savefig(dump_path)
-    plt.close()
+        # Unnormalize with mean and variance of observed aggregte targets – groundtruth 3D field is unobserved
+        prediction_3d = data.z_grid.std() * (prediction_3d_std + data.z_grid.mean()) / data.h.std()
+    return prediction_3d
+
+
+def evaluate(prediction_3d, data, output_dir, plot):
+    # Define aggregation wrt non-standardized height for evaluation
+    def trpz(grid):
+        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
+        return aggregated_grid
+
+    # Dump scores in output dir
+    dump_scores(prediction_3d=prediction_3d,
+                groundtruth_3d=data.gt_grid,
+                targets_2d=data.z_grid,
+                aggregate_fn=trpz,
+                output_dir=output_dir)
+
+    # Dump plots in output dir
+    if plot:
+        dump_plots(cfg=cfg,
+                   dataset=data.dataset,
+                   prediction_3d=prediction_3d,
+                   aggregate_fn=trpz,
+                   output_dir=output_dir)
+        logging.info("Dumped plots")
 
 
 if __name__ == "__main__":
