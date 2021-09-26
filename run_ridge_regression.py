@@ -15,7 +15,7 @@ from docopt import docopt
 import torch
 from src.preprocessing import make_data
 from src.models import AggregateRidgeRegression
-from src.evaluation import dump_scores, dump_plots
+from src.evaluation import dump_scores, dump_plots, dump_model
 
 
 def main(args, cfg):
@@ -35,7 +35,7 @@ def main(args, cfg):
     prediction_3d = predict(model=model, data=data)
 
     # Run evaluation
-    evaluate(prediction_3d=prediction_3d, data=data, plot=args['--plot'], output_dir=args['--o'])
+    evaluate(prediction_3d=prediction_3d, data=data, model=model, plot=args['--plot'], output_dir=args['--o'])
 
 
 def make_model(cfg, data):
@@ -69,7 +69,7 @@ def predict(model, data):
     return prediction_3d
 
 
-def evaluate(prediction_3d, data, plot, output_dir):
+def evaluate(prediction_3d, data, model, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
@@ -90,6 +90,10 @@ def evaluate(prediction_3d, data, plot, output_dir):
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
+
+    # Dump model weights in output dir
+    dump_model(model=model, output_dir=output_dir)
+    logging.info("Dumped weights")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+import torch
 import matplotlib.pyplot as plt
 from src.evaluation import metrics
 from src.evaluation import visualization
@@ -42,3 +43,8 @@ def dump_plots(cfg, dataset, prediction_3d, aggregate_fn, output_dir):
                                                      prediction_3d=prediction_3d)
     plt.savefig(dump_path)
     plt.close()
+
+
+def dump_model(model, output_dir):
+    dump_path = os.path.join(output_dir, 'state_dict.pt')
+    torch.save(model.state_dict(), dump_path)
