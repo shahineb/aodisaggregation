@@ -1,0 +1,29 @@
+dataset:
+  2d_covariates:
+  - burden_DMS
+  - burden_SO2
+  - burden_H2SO4
+  - burden_SO4
+  - burden_BC
+  3d_covariates:
+  - ATTBETA_TOT_SPACE_533nm
+  - relhum
+  groundtruth: ALFA_AER_533nm
+  path: data/all_aod_global_updated_ds_06_06_2008.nc
+  target: ALFA_AER_533nm_2D
+evaluation:
+  slice_latitude_idx: 20
+  slice_time_idx: 0
+  slices_covariates:
+  - ATTBETA_TOT_SPACE_533nm
+  - relhum
+model:
+  fit_intercept_2d: true
+  fit_intercept_3d: true
+  lbda_2d: 0.001
+  lbda_3d: 0.01
+  seed: 42
+  transform: square
+training:
+  lr: 1
+  n_epochs: 100

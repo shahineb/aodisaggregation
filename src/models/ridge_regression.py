@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import gpytorch
+from .utils import pad_input
 
 
 class AggregateRidgeRegression(nn.Module):
@@ -20,19 +21,6 @@ class AggregateRidgeRegression(nn.Module):
         self.aggregate_fn = aggregate_fn
         self.fit_intercept = fit_intercept
 
-    def pad_input(self, x):
-        """Pads x with 1 along last dimension
-
-        Args:
-            x (torch.Tensor)
-
-        Returns:
-            type: torch.Tensor
-
-        """
-        x = torch.cat([x, torch.ones(x.shape[:-1], device=x.device).unsqueeze(-1)], dim=-1)
-        return x
-
     def fit(self, individuals_covariates, aggregate_targets):
         """Fits model following sklearn syntax
 
@@ -43,7 +31,7 @@ class AggregateRidgeRegression(nn.Module):
 
         """
         if self.fit_intercept:
-            individuals_covariates = self.pad_input(individuals_covariates)
+            individuals_covariates = pad_input(individuals_covariates)
         n_bags = individuals_covariates.size(0)
         d = individuals_covariates.size(-1)
 
@@ -65,7 +53,7 @@ class AggregateRidgeRegression(nn.Module):
 
         """
         if self.fit_intercept:
-            x = self.pad_input(x)
+            x = pad_input(x)
         return x @ self.beta
 
 
@@ -94,32 +82,20 @@ class TwoStageAggregateRidgeRegression(nn.Module):
         self.fit_intercept_2d = fit_intercept_2d
         self.fit_intercept_3d = fit_intercept_3d
 
-    def pad_input(self, x):
-        """Pads x with 1 along last dimension
-
-        Args:
-            x (torch.Tensor)
-
-        Returns:
-            type: torch.Tensor
-
-        """
-        x = torch.cat([x, torch.ones(x.shape[:-1], device=x.device).unsqueeze(-1)], dim=-1)
-        return x
-
     def fit(self, individuals_covariates, bags_covariates, aggregate_targets):
         """Fits model following sklearn syntax
 
         Args:
             individuals_covariates (torch.Tensor): (n_bags, bags_size, n_dim_individuals)
                 samples must be organized by bags following which aggregation is taken
+            bags_covariates (torch.Tensor): (n_bags, n_dim_bags_covariates)
             aggregate_targets (torch.Tensor): (n_bags,) of aggregate targets observed for each bag
 
         """
         if self.fit_intercept_2d:
-            bags_covariates = self.pad_input(bags_covariates)
+            bags_covariates = pad_input(bags_covariates)
         if self.fit_intercept_3d:
-            individuals_covariates = self.pad_input(individuals_covariates)
+            individuals_covariates = pad_input(individuals_covariates)
 
         # Extract tensors dimensionalities
         n_bags = aggregate_targets.size(0)
@@ -150,7 +126,7 @@ class TwoStageAggregateRidgeRegression(nn.Module):
 
         """
         if self.fit_intercept_3d:
-            x = self.pad_input(x)
+            x = pad_input(x)
         return x @ self.beta
 
 
@@ -176,7 +152,7 @@ class WarpedAggregateRidgeRegression(nn.Module):
         self.beta = nn.Parameter(torch.randn(self.ndim))
 
     def forward(self, x):
-        """Runs prediction
+        """Runs prediction.
 
         Args:
             x (torch.Tensor): (n_samples, ndim)
@@ -190,7 +166,7 @@ class WarpedAggregateRidgeRegression(nn.Module):
         return self.transform(output)
 
     def aggregate_prediction(self, prediction):
-        """Computes aggregation of individuals output prediction
+        """Computes aggregation of individuals output prediction.
 
         Args:
             prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
@@ -207,3 +183,84 @@ class WarpedAggregateRidgeRegression(nn.Module):
             type: torch.Tensor
         """
         return self.lbda * torch.dot(self.beta, self.beta)
+
+
+class WarpedTwoStageAggregateRidgeRegression(nn.Module):
+    """Two-stage aggregate ridge regression warped with link function when aggregate
+    targets only are observed
+
+    Args:
+        lbda_2d (float): regularization weight for first stage, greater = stronger L2 penalty
+        lbda_3d (float): regularization weight for second stage, greater = stronger L2 penalty
+        transform (callable): link function to apply to prediction
+        aggregate_fn (callable): aggregation operator
+        ndim (int): dimensionality of input samples
+        fit_intercept_2d (bool): if True, pads 2D inputs with constant offset
+        fit_intercept_3d (bool): if True, fits a constant offset term on 3D predictor
+    """
+    def __init__(self, lbda_2d, lbda_3d, transform, aggregate_fn, ndim, fit_intercept_2d=False, fit_intercept_3d=False):
+        super().__init__()
+        self.lbda_2d = lbda_2d
+        self.lbda_3d = lbda_3d
+        self.transform = transform
+        self.aggregate_fn = aggregate_fn
+        self.fit_intercept_2d = fit_intercept_2d
+        self.fit_intercept_3d = fit_intercept_3d
+        self.ndim = ndim
+        if self.fit_intercept_3d:
+            self.bias_3d = nn.Parameter(torch.zeros(1))
+        self.beta = nn.Parameter(torch.randn(self.ndim))
+
+    def forward(self, x):
+        """Runs prediction
+
+        Args:
+            x (torch.Tensor): (n_samples, ndim)
+                samples must not need to be organized by bags
+        Returns:
+            type: torch.Tensor
+        """
+        output = x @ self.beta
+        if self.fit_intercept_3d:
+            output = output + self.bias_3d
+        return self.transform(output)
+
+    def aggregate_prediction(self, prediction, bags_covariates):
+        """Computes aggregation of individuals output prediction and fits first
+        regression stage against it.
+
+        The output is used to regress against aggregate target outputs z
+
+        Args:
+            prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
+            bags_covariates (torch.Tensor): (n_bags, n_dim_bags_covariates)
+
+        Returns:
+            type: torch.Tensor
+
+        """
+        if self.fit_intercept_2d:
+            bags_covariates = pad_input(bags_covariates)
+
+        # Extract tensors dimensionalities
+        n_bags = bags_covariates.size(0)
+        d_2d = bags_covariates.size(-1)
+
+        # Aggregate predictions of over 3D covariates
+        aggregated_prediction = self.aggregate_fn(prediction).squeeze()
+
+        # Fit first regression stage against aggregated predictions
+        Q_2d = (bags_covariates.t() @ bags_covariates + n_bags * self.lbda_2d * torch.eye(d_2d))
+        upsilon = gpytorch.inv_matmul(Q_2d, bags_covariates.t() @ aggregated_prediction)
+
+        # Predict out of first regression stage
+        first_stage_aggregated_predictions = bags_covariates @ upsilon
+        return first_stage_aggregated_predictions
+
+    def regularization_term(self):
+        """Square L2 norm of beta
+
+        Returns:
+            type: torch.Tensor
+        """
+        return self.lbda_3d * torch.dot(self.beta, self.beta)

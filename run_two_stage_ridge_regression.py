@@ -1,7 +1,7 @@
 """
 Description : Runs two-stage ridge regression experiment
 
-Usage: run_two_staged_ridge_experiment.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_two_stage_ridge_experiment.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
