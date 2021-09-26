@@ -59,6 +59,9 @@ def make_model(cfg, data):
     else:
         raise ValueError("Unknown transform")
 
+    # Fix weights initialization seed
+    torch.random.manual_seed(cfg['model']['seed'])
+
     # Instantiate model
     model = WarpedAggregateRidgeRegression(lbda=cfg['model']['lbda'],
                                            transform=transform,

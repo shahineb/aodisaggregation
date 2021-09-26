@@ -3,7 +3,7 @@ import pytest
 import torch
 from src.models import AggregateRidgeRegression
 from src.evaluation import metrics
-from test.toy import make_3d_toy_data
+from test.toy import make_toy_data
 
 
 @pytest.fixture(scope='module')
@@ -24,60 +24,15 @@ def toy_scores():
 
 @pytest.fixture(scope='module')
 def toy_data(cfg):
-    toy_data = make_3d_toy_data(cfg=cfg)
+    toy_data = make_toy_data(cfg=cfg, include_2d=False)
     return toy_data
 
 
 @pytest.fixture(scope='module')
-def dataset(toy_data):
-    return toy_data.dataset
-
-
-@pytest.fixture(scope='module')
-def standard_dataset(toy_data):
-    return toy_data.standard_dataset
-
-
-@pytest.fixture(scope='module')
-def x_by_column_std(toy_data):
-    return toy_data.x_by_column_std
-
-
-@pytest.fixture(scope='module')
-def x_std(toy_data):
-    return toy_data.x_std
-
-
-@pytest.fixture(scope='module')
-def z_grid(toy_data):
-    return toy_data.z_grid
-
-
-@pytest.fixture(scope='module')
-def z_std(toy_data):
-    return toy_data.z_std
-
-
-@pytest.fixture(scope='module')
-def gt_grid(toy_data):
-    return toy_data.gt_grid
-
-
-@pytest.fixture(scope='module')
-def h(toy_data):
-    return toy_data.h
-
-
-@pytest.fixture(scope='module')
-def h_std(toy_data):
-    return toy_data.h_std
-
-
-@pytest.fixture(scope='module')
-def model(cfg, h_std, x_by_column_std, z_std):
+def model(cfg, toy_data):
     # Create aggregation operator
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=h_std.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=toy_data.h_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Instantiate model
@@ -86,21 +41,21 @@ def model(cfg, h_std, x_by_column_std, z_std):
                                      fit_intercept=cfg['model']['fit_intercept'])
 
     # Fit it
-    model.fit(x_by_column_std, z_std)
+    model.fit(toy_data.x_by_column_std, toy_data.z_std)
     return model
 
 
-def test_prediction(dataset, model, x_std, gt_grid, z_grid, h, toy_scores):
+def test_prediction(model, toy_data, toy_scores):
     # Run prediction
     with torch.no_grad():
-        prediction = model(x_std)
-        prediction_3d_std = prediction.reshape(*gt_grid.shape)
-        prediction_3d = z_grid.std() * (prediction_3d_std + z_grid.mean()) / h.std()
+        prediction = model(toy_data.x_std)
+        prediction_3d_std = prediction.reshape(*toy_data.gt_grid.shape)
+        prediction_3d = toy_data.z_grid.std() * (prediction_3d_std + toy_data.z_grid.mean()) / toy_data.h.std()
 
     # Define aggregation wrt height with trapezoidal rule
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=toy_data.h.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
-    scores = metrics.compute_scores(prediction_3d, gt_grid, z_grid, trpz)
+    scores = metrics.compute_scores(prediction_3d, toy_data.gt_grid, toy_data.z_grid, trpz)
     assert scores == toy_scores
