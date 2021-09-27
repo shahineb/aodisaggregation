@@ -9,7 +9,7 @@ class AggregateKernelRidgeRegression(nn.Module):
         *** Current implementation assumes all columns have same size ***
 
     Args:
-        kernel (kernels.RFFKernel): Random Fourier features kernel instance
+        kernel (kernels.RFFKernel): Random Fourier features kernel instance.
         lbda (float): regularization weight, greater = stronger L2 penalty
         aggregate_fn (callable): aggregation operator
     """
@@ -160,6 +160,67 @@ class TwoStageAggregateKernelRidgeRegression(nn.Module):
         # Multiply with learnt weight - Shape = (n_samples)
         output = Z @ self.beta_rff
         return output
+
+
+class WarpedAggregateKernelRidgeRegression(nn.Module):
+    """Warped Kernel Ridge Regression when aggregated targets only are observed
+
+        *** Current implementation assumes all columns have same size ***
+
+    Args:
+        kernel (gpytorch.kernels.Kernel): covariance function over inputs 3D samples.
+        training_covariates (torch.Tensor): (n_bags, bags_size, n_dim_individuals)
+            samples must be organized by bags following which aggregation is taken
+        lbda (float): regularization weight, greater = stronger L2 penalty
+        transform (callable): link function to apply to prediction
+        aggregate_fn (callable): aggregation operator
+        ndim (int): dimensionality of input samples
+    """
+
+    def __init__(self, kernel, training_covariates, lbda, transform, aggregate_fn, ndim):
+        super().__init__()
+        self.kernel = kernel
+        self.lbda = lbda
+        self.transform = transform
+        self.aggregate_fn = aggregate_fn
+        self.ndim = ndim
+        self.register_buffer('training_covariates', training_covariates)
+        self.beta = nn.Parameter(torch.randn(training_covariates.size(0)))
+
+    def forward(self, x):
+        """Runs prediction.
+
+        Args:
+            x (torch.Tensor): (n_samples, ndim)
+                samples must not need to be organized by bags
+        Returns:
+            type: torch.Tensor
+        """
+        if torch.equal(x, self.training_covariates):
+            K = self.kernel(self.training_covariates)
+        else:
+            K = self.kernel(x, self.training_covariates)
+        self._K_beta = K @ self.beta
+        return self.transform(self._K_beta)
+
+    def aggregate_prediction(self, prediction):
+        """Computes aggregation of individuals output prediction.
+
+        Args:
+            prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
+        Returns:
+            type: torch.Tensor
+        """
+        aggregated_prediction = self.aggregate_fn(prediction)
+        return aggregated_prediction
+
+    def regularization_term(self):
+        """Square L2 norm of beta
+
+        Returns:
+            type: torch.Tensor
+        """
+        return self.lbda * torch.dot(self.beta, self._K_beta)
 
 
 
