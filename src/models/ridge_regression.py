@@ -133,6 +133,8 @@ class TwoStageAggregateRidgeRegression(nn.Module):
 class WarpedAggregateRidgeRegression(nn.Module):
     """Ridge regression warped with link function when aggregate targets only are observed
 
+        *** Current implementation assumes all columns have same size ***
+
     Args:
         lbda (float): regularization weight, greater = stronger L2 penalty
         transform (callable): link function to apply to prediction
@@ -188,6 +190,8 @@ class WarpedAggregateRidgeRegression(nn.Module):
 class WarpedTwoStageAggregateRidgeRegression(nn.Module):
     """Two-stage aggregate ridge regression warped with link function when aggregate
     targets only are observed
+
+        *** Current implementation assumes all columns have same size ***
 
     Args:
         lbda_2d (float): regularization weight for first stage, greater = stronger L2 penalty
