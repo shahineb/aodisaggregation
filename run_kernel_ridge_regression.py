@@ -29,7 +29,7 @@ def main(args, cfg):
     logging.info(f"{model}")
 
     # Fit model
-    model = fit(model=model, data=data)
+    model = fit(cfg=cfg, model=model, data=data)
     logging.info("Fitted model")
 
     # Run prediction
@@ -59,7 +59,11 @@ def make_model(cfg, data):
     return model
 
 
-def fit(model, data):
+def fit(cfg, model, data):
+    # Fix RFF sampling seed
+    torch.random.manual_seed(cfg['model']['seed'])
+
+    # Fit model
     model.fit(data.x_by_column_std, data.z_std)
     return model
 
