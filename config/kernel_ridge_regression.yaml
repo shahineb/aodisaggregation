@@ -1,24 +1,11 @@
 ################################################################################
-#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH WARPED TWO-STAGE AGGREGATE RIDGE REGRESSION
+#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH KERNEL AGGREGATE RIDGE REGRESSION
 ################################################################################
 
 # DATASET
 dataset:
   # Path to main model data .nc file
   path: data/all_aod_global_updated_ds_06_06_2008.nc
-
-  # Variables to use as 2D covariates
-  2d_covariates:
-    - burden_DMS
-    - burden_SO2
-    - burden_H2SO4
-    - burden_SO4
-    - burden_BC
-    # - burden_OC
-    # - burden_SS
-    # - burden_DU
-    # - burden_WAT
-    # - abso4
 
   # Variables to use as 3D covariates
   3d_covariates:
@@ -34,32 +21,17 @@ dataset:
 
 # MODEL SPECIFICATIONS
 model:
-  # L2 regularization weight for stage 1
-  lbda_2d: 0.001
+  # Matern kernel parameter
+  nu: 1.5
 
-  # L2 regularization weight for stage 2
-  lbda_3d: 0.01
+  # Kernel lengthscale
+  lengthscale: 3
 
-  # Warping transformation
-  transform: 'square'
+  # Number of random fourier features samples
+  num_samples: 500
 
-  # Whether to use bias or not in stage 1
-  fit_intercept_2d: True
-
-  # Whether to use bias or not in stage 1
-  fit_intercept_3d: True
-
-  # Weights initialization seed
-  seed: 42
-
-
-# TRAINING
-training:
-  # Number of training epochs
-  n_epochs: 15000
-
-  # Learning rate
-  lr: 0.1
+  # L2 regularization weight
+  lbda: 0.001
 
 
 

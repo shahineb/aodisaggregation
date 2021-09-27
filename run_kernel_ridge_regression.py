@@ -1,7 +1,7 @@
 """
-Description : Runs two-stage ridge regression experiment
+Description : Runs aggregate kernel ridge regression experiment
 
-Usage: run_two_stage_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_kernel_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -14,14 +14,15 @@ import logging
 from docopt import docopt
 import torch
 from src.preprocessing import make_data
-from src.models import TwoStageAggregateRidgeRegression
+from src.kernels import RFFKernel
+from src.models import AggregateKernelRidgeRegression
 from src.evaluation import dump_scores, dump_plots, dump_model
 
 
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
-    data = make_data(cfg=cfg, include_2d=True)
+    data = make_data(cfg=cfg, include_2d=False)
 
     # Instantiate model
     model = make_model(cfg=cfg, data=data)
@@ -35,26 +36,31 @@ def main(args, cfg):
     prediction_3d = predict(model=model, data=data)
 
     # Run evaluation
-    evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, output_dir=args['--o'], plot=args['--plot'])
+    evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def make_model(cfg, data):
-    # Create aggregation operator
+    # Create aggregation operator over standardized heights
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
+    # Initialize RFF kernel
+    ard_num_dims = len(cfg['dataset']['3d_covariates']) + 4
+    kernel = RFFKernel(nu=cfg['model']['nu'],
+                       num_samples=cfg['model']['num_samples'],
+                       ard_num_dims=ard_num_dims)
+    kernel.lengthscale = cfg['model']['lengthscale'] * torch.ones(ard_num_dims)
+
     # Instantiate model
-    model = TwoStageAggregateRidgeRegression(lbda_2d=cfg['model']['lbda_2d'],
-                                             lbda_3d=cfg['model']['lbda_3d'],
-                                             aggregate_fn=trpz,
-                                             fit_intercept_2d=cfg['model']['fit_intercept_2d'],
-                                             fit_intercept_3d=cfg['model']['fit_intercept_3d'])
+    model = AggregateKernelRidgeRegression(kernel=kernel,
+                                           lbda=cfg['model']['lbda'],
+                                           aggregate_fn=trpz)
     return model
 
 
 def fit(model, data):
-    model.fit(data.x_by_column_std, data.y_std, data.z_std)
+    model.fit(data.x_by_column_std, data.z_std)
     return model
 
 
@@ -71,7 +77,7 @@ def predict(model, data):
     return prediction_3d
 
 
-def evaluate(prediction_3d, data, model, cfg, output_dir, plot):
+def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
