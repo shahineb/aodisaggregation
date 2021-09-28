@@ -26,7 +26,7 @@ model:
   nu: 1.5
 
   # Kernel lengthscale
-  lengthscale: 1
+  lengthscale: 0.01
 
   # Number of random fourier features samples
   num_samples: 500
@@ -35,7 +35,7 @@ model:
   transform: 'square'
 
   # L2 regularization weight
-  lbda: 0.1
+  lbda: 0.001
 
   # RFF sampling seed
   seed: 42
@@ -45,10 +45,12 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 1500
+  n_epochs: 15000
 
   # Learning rate
   lr: 0.1
+
+
 
 
 # EVALUATION

@@ -97,7 +97,7 @@ def fit(model, data, cfg):
         optimizer.step()
 
         # Update progress bar
-        bar.suffix = f"Loss {loss.item()}"
+        bar.suffix = f"Loss {loss.item():e}"
         bar.next()
 
     return model

@@ -121,9 +121,6 @@ class TwoStageAggregateKernelRidgeRegression(nn.Module):
         d_2d = bags_covariates.size(-1)
         d_3d = individuals_covariates.size(-1)
 
-        # Register training samples for prediction later
-        self.register_buffer('training_covariates', individuals_covariates)
-
         # Sample random fourier features weights for both kernel
         self.kernel_2d._init_weights(d_2d, self.kernel_2d.num_samples)
         self.kernel_3d._init_weights(d_3d, self.kernel_3d.num_samples)
@@ -163,28 +160,28 @@ class TwoStageAggregateKernelRidgeRegression(nn.Module):
 
 
 class WarpedAggregateKernelRidgeRegression(nn.Module):
-    """Warped Kernel Ridge Regression when aggregated targets only are observed
+    """RFF Warped Kernel Ridge Regression when aggregated targets only are observed
 
         *** Current implementation assumes all columns have same size ***
 
     Args:
-        kernel (gpytorch.kernels.Kernel): covariance function over inputs 3D samples.
+        kernel (kernels.RFFKernel): covariance function over inputs 3D samples.
         training_covariates (torch.Tensor): (n_bags, bags_size, n_dim_individuals)
             samples must be organized by bags following which aggregation is taken
         lbda (float): regularization weight, greater = stronger L2 penalty
         transform (callable): link function to apply to prediction
         aggregate_fn (callable): aggregation operator
-        ndim (int): dimensionality of input samples
     """
 
-    def __init__(self, kernel, training_covariates, lbda, transform, aggregate_fn, ndim):
+    def __init__(self, kernel, training_covariates, lbda, transform, aggregate_fn):
         super().__init__()
+        self.ndim = training_covariates.size(-1)
         self.kernel = kernel
+        self.kernel._init_weights(self.ndim, self.kernel.num_samples)
         self.lbda = lbda
         self.transform = transform
         self.aggregate_fn = aggregate_fn
-        self.ndim = ndim
-        self.register_buffer('training_covariates', training_covariates)
+        self.register_buffer('rff_training_features', self.kernel._featurize(training_covariates, normalize=True))
         self.beta = nn.Parameter(torch.randn(training_covariates.size(0)))
 
     def forward(self, x):
@@ -196,12 +193,10 @@ class WarpedAggregateKernelRidgeRegression(nn.Module):
         Returns:
             type: torch.Tensor
         """
-        if torch.equal(x, self.training_covariates):
-            K = self.kernel(self.training_covariates)
-        else:
-            K = self.kernel(x, self.training_covariates)
-        self._K_beta = K @ self.beta
-        return self.transform(self._K_beta)
+        Z = self.kernel._featurize(x, normalize=True)
+        self._Z_train_beta = self.rff_training_features.t() @ self.beta
+        K_beta = Z @ self._Z_train_beta
+        return self.transform(K_beta)
 
     def aggregate_prediction(self, prediction):
         """Computes aggregation of individuals output prediction.
@@ -220,41 +215,95 @@ class WarpedAggregateKernelRidgeRegression(nn.Module):
         Returns:
             type: torch.Tensor
         """
-        return self.lbda * torch.dot(self.beta, self._K_beta)
+        return self.lbda * torch.square(self._Z_train_beta).sum()
 
 
+class WarpedTwoStageAggregateKernelRidgeRegression(nn.Module):
+    """RFF Warped Two-stage Kernel Ridge Regression when aggregated targets only are observed
 
+        *** Current implementation assumes all columns have same size ***
 
+    Args:
+        kernel_2d (kernels.RFFKernel): Random Fourier features kernel instance for bags covariates.
+        kernel_3d (kernels.RFFKernel): Random Fourier features kernel instance for individuals covariates.
+        lbda_2d (float): regularization weight for first stage, greater = stronger L2 penalty
+        lbda_3d (float): regularization weight for second stage, greater = stronger L2 penalty
+        aggregate_fn (callable): aggregation operator
 
+    """
 
+    def __init__(self, kernel_2d, kernel_3d, training_covariates_3d, training_covariates_2d, lbda_2d, lbda_3d, transform, aggregate_fn):
+        super().__init__()
+        # Setup dimensions attributes
+        self.ndim_2d = training_covariates_2d.size(-1)
+        self.ndim_3d = training_covariates_3d.size(-1)
 
+        # Setup 2D kernel and random fourier features
+        self.kernel_2d = kernel_2d
+        self.kernel_2d._init_weights(training_covariates_2d.size(-1), self.kernel_2d.num_samples)
+        self.register_buffer('rff_training_features_2d', self.kernel_2d._featurize(training_covariates_2d, normalize=True))
 
+        # Setup 3D kernel and random fourier features
+        self.kernel_3d = kernel_3d
+        self.kernel_3d._init_weights(training_covariates_3d.size(-1), self.kernel_3d.num_samples)
+        self.register_buffer('rff_training_features_3d', self.kernel_3d._featurize(training_covariates_3d, normalize=True))
 
+        # Setup regularization weights
+        self.lbda_2d = lbda_3d
+        self.lbda_3d = lbda_3d
 
+        # Setup callable attributess
+        self.transform = transform
+        self.aggregate_fn = aggregate_fn
 
+        # Initialize weight tensor to learn
+        self.beta = nn.Parameter(torch.randn(training_covariates_3d.size(0)))
 
+    def forward(self, x):
+        """Runs prediction.
 
+        Args:
+            x (torch.Tensor): (n_samples, ndim)
+                samples must not need to be organized by bags
+        Returns:
+            type: torch.Tensor
+        """
+        Z = self.kernel._featurize(x, normalize=True)
+        self._Z_train_beta = self.rff_training_features.t() @ self.beta
+        K_beta = Z @ self._Z_train_beta
+        return self.transform(K_beta)
 
+    def aggregate_prediction(self, prediction, bags_covariates):
+        """Computes aggregation of individuals output prediction and fits first
+        regression stage against it.
 
+        The output is used to regress against aggregate target outputs z
 
+        Args:
+            prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
+            bags_covariates (torch.Tensor): (n_bags, n_dim_bags_covariates)
 
+        Returns:
+            type: torch.Tensor
 
+        """
+        # Extract tensors dimensionalities
+        n_bags = prediction.size(0)
 
+        # Fit first regression stage
+        Z_2d = self.rff_training_features_2d  # (n_bags, R_2d)
+        Q_2d = (Z_2d.t() @ Z_2d + n_bags * self.lbda_2d * torch.eye(2 * self.kernel_2d.num_samples))  # (R_2d, R_2d)
+        aggregated_prediction = self.aggregate_fn(prediction).squeeze()  # (n_bags,)
+        upsilon = gpytorch.inv_matmul(Q_2d, Z_2d.t() @ aggregated_prediction)  # (R_2d,)
 
+        # Predict out of first stage
+        first_stage_aggregated_predictions = Z_2d @ upsilon  # (n_bags,)
+        return first_stage_aggregated_predictions
 
+    def regularization_term(self):
+        """Square L2 norm of beta
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#####
+        Returns:
+            type: torch.Tensor
+        """
+        return self.lbda * torch.square(self._Z_train_beta).sum()

@@ -1,5 +1,5 @@
 """
-Description : Runs warped ridge regression experiment
+Description : Runs warped kernel ridge regression experiment
 
 Usage: run_warped_kernel_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
@@ -68,18 +68,20 @@ def make_model(cfg, data):
     kernel.lengthscale = cfg['model']['lengthscale'] * torch.ones(ard_num_dims)
     kernel.raw_lengthscale.requires_grad = False
 
+    # Fix weights initialization seed
+    torch.random.manual_seed(cfg['model']['seed'])
+
     # Instantiate model
     model = WarpedAggregateKernelRidgeRegression(kernel=kernel,
                                                  training_covariates=data.x_std,
                                                  lbda=cfg['model']['lbda'],
                                                  transform=transform,
-                                                 aggregate_fn=trpz,
-                                                 ndim=ard_num_dims)
+                                                 aggregate_fn=trpz)
     return model
 
 
 def fit(model, data, cfg):
-    # Define optimizer and exact loglikelihood module
+    # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Initialize progress bar
@@ -104,7 +106,7 @@ def fit(model, data, cfg):
         optimizer.step()
 
         # Update progress bar
-        bar.suffix = f"Loss {loss.item()}"
+        bar.suffix = f"Loss {loss.item():e}"
         bar.next()
 
     return model
