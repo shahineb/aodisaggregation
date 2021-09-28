@@ -268,12 +268,12 @@ class WarpedTwoStageAggregateKernelRidgeRegression(nn.Module):
         Returns:
             type: torch.Tensor
         """
-        Z = self.kernel._featurize(x, normalize=True)
-        self._Z_train_beta = self.rff_training_features.t() @ self.beta
+        Z = self.kernel_3d._featurize(x, normalize=True)
+        self._Z_train_beta = self.rff_training_features_3d.t() @ self.beta
         K_beta = Z @ self._Z_train_beta
         return self.transform(K_beta)
 
-    def aggregate_prediction(self, prediction, bags_covariates):
+    def aggregate_prediction(self, prediction):
         """Computes aggregation of individuals output prediction and fits first
         regression stage against it.
 
@@ -281,7 +281,6 @@ class WarpedTwoStageAggregateKernelRidgeRegression(nn.Module):
 
         Args:
             prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
-            bags_covariates (torch.Tensor): (n_bags, n_dim_bags_covariates)
 
         Returns:
             type: torch.Tensor
@@ -306,4 +305,4 @@ class WarpedTwoStageAggregateKernelRidgeRegression(nn.Module):
         Returns:
             type: torch.Tensor
         """
-        return self.lbda * torch.square(self._Z_train_beta).sum()
+        return self.lbda_3d * torch.square(self._Z_train_beta).sum()

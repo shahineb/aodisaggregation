@@ -1,43 +1,70 @@
-"""
-Description : Runs warped two-stage kernel ridge regression experiment
-
-Usage: run_warped_two_stage_kernel_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
-
-Options:
-  --cfg=<path_to_config>           Path to YAML configuration file to use.
-  --o=<output_dir>                 Output directory.
-  --plot                           Outputs plots.
-"""
-import os
 import yaml
-import logging
-from docopt import docopt
-from progress.bar import Bar
+import pytest
 import torch
-from src.kernels import RFFKernel
-from src.preprocessing import make_data
+from progress.bar import Bar
 from src.models import WarpedTwoStageAggregateKernelRidgeRegression
-from src.evaluation import dump_scores, dump_plots, dump_state_dict
+from src.kernels import RFFKernel
+from src.evaluation import metrics
+from test.toy import make_toy_data
 
 
-def main(args, cfg):
-    # Create dataset
-    logging.info("Loading dataset")
-    data = make_data(cfg=cfg, include_2d=True)
+"""
+PATHS FIXTURES
+"""
 
-    # Instantiate model
-    model = make_model(cfg=cfg, data=data)
-    logging.info(f"{model}")
 
-    # Fit model
-    model = fit(model=model, data=data, cfg=cfg)
-    logging.info("Fitted model")
+@pytest.fixture(scope='module')
+def toy_cfg_path():
+    cfg_path = 'test/toy/config/warped_two_stage_kernel_ridge_regression.yaml'
+    return cfg_path
 
-    # Run prediction
-    prediction_3d = predict(model=model, data=data)
 
-    # Run evaluation
-    evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+@pytest.fixture(scope='module')
+def toy_scores_path():
+    scores_path = 'test/toy/outputs/warped-two-stage-kernel-ridge-regression/scores.metrics'
+    return scores_path
+
+
+@pytest.fixture(scope='module')
+def toy_state_dict_path():
+    state_dict_path = 'test/toy/outputs/warped-two-stage-kernel-ridge-regression/state_dict.pt'
+    return state_dict_path
+
+
+"""
+OBJECTS FIXTURES
+"""
+
+
+@pytest.fixture(scope='module')
+def toy_cfg(toy_cfg_path):
+    with open(toy_cfg_path, 'r') as f:
+        toy_cfg = yaml.safe_load(f)
+    return toy_cfg
+
+
+@pytest.fixture(scope='module')
+def toy_scores(toy_scores_path):
+    with open(toy_scores_path, 'r') as f:
+        toy_scores = yaml.safe_load(f)
+    return toy_scores
+
+
+@pytest.fixture(scope='module')
+def toy_state_dict(toy_state_dict_path):
+    toy_state_dict = torch.load(toy_state_dict_path)
+    return toy_state_dict
+
+
+@pytest.fixture(scope='module')
+def toy_data(toy_cfg):
+    toy_data = make_toy_data(cfg=toy_cfg, include_2d=True)
+    return toy_data
+
+
+"""
+TESTING MODEL
+"""
 
 
 def make_model(cfg, data):
@@ -123,60 +150,36 @@ def fit(model, data, cfg):
     return model
 
 
-def predict(model, data):
+@pytest.fixture(scope='module')
+def fitted_model(toy_cfg, toy_data):
+    model = make_model(cfg=toy_cfg, data=toy_data)
+    fitted_model = fit(model=model, data=toy_data, cfg=toy_cfg)
+    return fitted_model
+
+
+"""
+TESTS
+"""
+
+
+def test_parameters(fitted_model, toy_state_dict):
+    # Extract state dict from fitted model
+    fitted_state_dict = fitted_model.state_dict()
+
+    # Check if models match
+    for (fitted_name, fitted_param), (toy_name, toy_param) in zip(fitted_state_dict.items(), toy_state_dict.items()):
+        assert fitted_name == toy_name
+        assert torch.equal(fitted_param, toy_param)
+
+
+def test_prediction(fitted_model, toy_data, toy_scores, toy_cfg):
+    # Run prediction
     with torch.no_grad():
-        # Predict on standardized 3D covariates
-        prediction = model(data.x_std)
+        prediction = fitted_model(toy_data.x_std)
+        prediction_3d = prediction.reshape(*toy_data.gt_grid.shape)
 
-        # Reshape as (time, lat, lon, lev) grid
-        prediction_3d = prediction.reshape(*data.gt_grid.shape)
-    return prediction_3d
+    # Compute scores
+    scores = metrics.compute_scores(prediction_3d, toy_data.gt_grid, toy_data.z_grid, fitted_model.aggregate_fn)
 
-
-def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
-    # Define aggregation wrt non-standardized height for evaluation
-    def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
-        return aggregated_grid
-
-    # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d,
-                groundtruth_3d=data.gt_grid,
-                targets_2d=data.z_grid,
-                aggregate_fn=trpz,
-                output_dir=output_dir)
-
-    # Dump plots in output dir
-    if plot:
-        dump_plots(cfg=cfg,
-                   dataset=data.dataset,
-                   prediction_3d=prediction_3d,
-                   aggregate_fn=trpz,
-                   output_dir=output_dir)
-        logging.info("Dumped plots")
-
-    # Dump model weights in output dir
-    dump_state_dict(model=model, output_dir=output_dir)
-    logging.info("Dumped weights")
-
-
-if __name__ == "__main__":
-    # Read input args
-    args = docopt(__doc__)
-
-    # Load config file
-    with open(args['--cfg'], "r") as f:
-        cfg = yaml.safe_load(f)
-
-    # Setup logging
-    logging.basicConfig(level=logging.INFO)
-    logging.info(f'Arguments: {args}\n')
-    logging.info(f'Configuration file: {cfg}\n')
-
-    # Create output directory if doesn't exists
-    os.makedirs(args['--o'], exist_ok=True)
-    with open(os.path.join(args['--o'], 'cfg.yaml'), 'w') as f:
-        yaml.dump(cfg, f)
-
-    # Run session
-    main(args, cfg)
+    # Check if matches what is expected
+    assert scores == toy_scores

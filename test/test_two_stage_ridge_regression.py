@@ -108,7 +108,6 @@ def test_parameters(fitted_model, toy_state_dict):
         assert torch.equal(fitted_param, toy_param)
 
 
-
 def test_prediction(fitted_model, toy_data, toy_scores):
     # Run prediction
     with torch.no_grad():

@@ -16,7 +16,7 @@ import torch
 from src.preprocessing import make_data
 from src.kernels import RFFKernel
 from src.models import AggregateKernelRidgeRegression
-from src.evaluation import dump_scores, dump_plots, dump_model
+from src.evaluation import dump_scores, dump_plots, dump_state_dict
 
 
 def main(args, cfg):
@@ -104,7 +104,7 @@ def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
         logging.info("Dumped plots")
 
     # Dump model weights in output dir
-    dump_model(model=model, output_dir=output_dir)
+    dump_state_dict(model=model, output_dir=output_dir)
     logging.info("Dumped weights")
 
 
