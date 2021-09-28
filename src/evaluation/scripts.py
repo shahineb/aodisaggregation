@@ -45,6 +45,11 @@ def dump_plots(cfg, dataset, prediction_3d, aggregate_fn, output_dir):
     plt.close()
 
 
-def dump_model(model, output_dir):
+def dump_model_parameters(model, output_dir):
+    dump_path = os.path.join(output_dir, 'named_params.pt')
+    torch.save(dict(model.named_parameters()), dump_path)
+
+
+def dump_state_dict(model, output_dir):
     dump_path = os.path.join(output_dir, 'state_dict.pt')
     torch.save(model.state_dict(), dump_path)

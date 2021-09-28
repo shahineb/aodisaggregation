@@ -1,5 +1,5 @@
 ################################################################################
-#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH WARPED TWO-STAGE AGGREGATE RIDGE REGRESSION
+#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH TWO-STAGE AGGREGATE KERNEL RIDGE REGRESSION
 ################################################################################
 
 # DATASET
@@ -34,33 +34,32 @@ dataset:
 
 # MODEL SPECIFICATIONS
 model:
+  # Matern kernel parameter for stage 1
+  nu_2d: 1.5
+
+  # Kernel lengthscales for stage 1
+  lengthscale_2d: 3
+
+  # Number of random fourier features samples for stage 1
+  num_samples_2d: 500
+
   # L2 regularization weight for stage 1
-  lbda_2d: 0.001
+  lbda_2d: 0.1
+
+  # Matern kernel parameter for stage 2
+  nu_3d: 1.5
+
+  # Kernel lengthscales for stage 2
+  lengthscale_3d: 3
+
+  # Number of random fourier features samples for stage 2
+  num_samples_3d: 500
 
   # L2 regularization weight for stage 2
-  lbda_3d: 0.01
+  lbda_3d: 0.0001
 
-  # Warping transformation
-  transform: 'square'
-
-  # Whether to use bias or not in stage 1
-  fit_intercept_2d: True
-
-  # Whether to use bias or not in stage 1
-  fit_intercept_3d: True
-
-  # Weights initialization seed
+  # RFF sampling seed
   seed: 42
-
-
-# TRAINING
-training:
-  # Number of training epochs
-  n_epochs: 15000
-
-  # Learning rate
-  lr: 0.1
-
 
 
 # EVALUATION

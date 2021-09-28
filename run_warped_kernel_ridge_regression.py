@@ -1,7 +1,7 @@
 """
-Description : Runs warped ridge regression experiment
+Description : Runs warped kernel ridge regression experiment
 
-Usage: run_warped_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_warped_kernel_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -14,8 +14,9 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
+from src.kernels import RFFKernel
 from src.preprocessing import make_data
-from src.models import WarpedAggregateRidgeRegression
+from src.models import WarpedAggregateKernelRidgeRegression
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
 
 
@@ -40,7 +41,7 @@ def main(args, cfg):
 
 
 def make_model(cfg, data):
-    # Create aggregation operator
+    # Create aggregation operator over standardized heights
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
         return aggregated_grid
@@ -59,20 +60,28 @@ def make_model(cfg, data):
     else:
         raise ValueError("Unknown transform")
 
+    # Initialize kernel
+    ard_num_dims = len(cfg['dataset']['3d_covariates']) + 4
+    kernel = RFFKernel(nu=cfg['model']['nu'],
+                       num_samples=cfg['model']['num_samples'],
+                       ard_num_dims=ard_num_dims)
+    kernel.lengthscale = cfg['model']['lengthscale'] * torch.ones(ard_num_dims)
+    kernel.raw_lengthscale.requires_grad = False
+
     # Fix weights initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Instantiate model
-    model = WarpedAggregateRidgeRegression(lbda=cfg['model']['lbda'],
-                                           transform=transform,
-                                           aggregate_fn=trpz,
-                                           ndim=len(cfg['dataset']['3d_covariates']) + 4,
-                                           fit_intercept=cfg['model']['fit_intercept'])
+    model = WarpedAggregateKernelRidgeRegression(kernel=kernel,
+                                                 training_covariates=data.x_std,
+                                                 lbda=cfg['model']['lbda'],
+                                                 transform=transform,
+                                                 aggregate_fn=trpz)
     return model
 
 
 def fit(model, data, cfg):
-    # Define optimizer and exact loglikelihood module
+    # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Initialize progress bar

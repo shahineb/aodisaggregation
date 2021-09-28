@@ -1,10 +1,10 @@
 import yaml
 import pytest
 import torch
-from src.models import AggregateRidgeRegression
+from src.models import TwoStageAggregateKernelRidgeRegression
+from src.kernels import RFFKernel
 from src.evaluation import metrics
 from test.toy import make_toy_data
-
 
 """
 PATHS FIXTURES
@@ -13,19 +13,19 @@ PATHS FIXTURES
 
 @pytest.fixture(scope='module')
 def toy_cfg_path():
-    cfg_path = 'test/toy/config/ridge_regression.yaml'
+    cfg_path = 'test/toy/config/two_stage_kernel_ridge_regression.yaml'
     return cfg_path
 
 
 @pytest.fixture(scope='module')
 def toy_scores_path():
-    scores_path = 'test/toy/outputs/ridge-regression/scores.metrics'
+    scores_path = 'test/toy/outputs/two-stage-kernel-ridge-regression/scores.metrics'
     return scores_path
 
 
 @pytest.fixture(scope='module')
 def toy_state_dict_path():
-    state_dict_path = 'test/toy/outputs/ridge-regression/state_dict.pt'
+    state_dict_path = 'test/toy/outputs/two-stage-kernel-ridge-regression/state_dict.pt'
     return state_dict_path
 
 
@@ -56,7 +56,7 @@ def toy_state_dict(toy_state_dict_path):
 
 @pytest.fixture(scope='module')
 def toy_data(toy_cfg):
-    toy_data = make_toy_data(cfg=toy_cfg, include_2d=False)
+    toy_data = make_toy_data(cfg=toy_cfg, include_2d=True)
     return toy_data
 
 
@@ -66,27 +66,47 @@ TESTING MODEL
 
 
 def make_model(cfg, data):
-    # Create aggregation operator
+    # Create aggregation operator over standardized heights
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
+    # Initialize RFF 2D covariates kernel
+    ard_num_dims = len(cfg['dataset']['2d_covariates']) + 3
+    kernel_2d = RFFKernel(nu=cfg['model']['nu_2d'],
+                          num_samples=cfg['model']['num_samples_2d'],
+                          ard_num_dims=ard_num_dims)
+    kernel_2d.lengthscale = cfg['model']['lengthscale_2d'] * torch.ones(ard_num_dims)
+
+    # Initialize RFF 3D covariates kernel
+    ard_num_dims = len(cfg['dataset']['3d_covariates']) + 4
+    kernel_3d = RFFKernel(nu=cfg['model']['nu_3d'],
+                          num_samples=cfg['model']['num_samples_3d'],
+                          ard_num_dims=ard_num_dims)
+    kernel_3d.lengthscale = cfg['model']['lengthscale_3d'] * torch.ones(ard_num_dims)
+
     # Instantiate model
-    model = AggregateRidgeRegression(lbda=cfg['model']['lbda'],
-                                     aggregate_fn=trpz,
-                                     fit_intercept=cfg['model']['fit_intercept'])
+    model = TwoStageAggregateKernelRidgeRegression(kernel_2d=kernel_2d,
+                                                   kernel_3d=kernel_3d,
+                                                   lbda_2d=cfg['model']['lbda_2d'],
+                                                   lbda_3d=cfg['model']['lbda_3d'],
+                                                   aggregate_fn=trpz)
     return model
 
 
-def fit(model, data):
-    model.fit(data.x_by_column_std, data.z_std)
+def fit(cfg, model, data):
+    # Fix RFF sampling seed
+    torch.random.manual_seed(cfg['model']['seed'])
+
+    # Fit model
+    model.fit(data.x_by_column_std, data.y_std, data.z_std)
     return model
 
 
 @pytest.fixture(scope='module')
 def fitted_model(toy_cfg, toy_data):
     model = make_model(cfg=toy_cfg, data=toy_data)
-    fitted_model = fit(model, toy_data)
+    fitted_model = fit(cfg=toy_cfg, model=model, data=toy_data)
     return fitted_model
 
 
@@ -103,7 +123,6 @@ def test_parameters(fitted_model, toy_state_dict):
     for (fitted_name, fitted_param), (toy_name, toy_param) in zip(fitted_state_dict.items(), toy_state_dict.items()):
         assert fitted_name == toy_name
         assert torch.equal(fitted_param, toy_param)
-
 
 
 def test_prediction(fitted_model, toy_data, toy_scores):

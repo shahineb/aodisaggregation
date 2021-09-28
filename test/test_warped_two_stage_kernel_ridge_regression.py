@@ -2,7 +2,8 @@ import yaml
 import pytest
 import torch
 from progress.bar import Bar
-from src.models import WarpedTwoStageAggregateRidgeRegression
+from src.models import WarpedTwoStageAggregateKernelRidgeRegression
+from src.kernels import RFFKernel
 from src.evaluation import metrics
 from test.toy import make_toy_data
 
@@ -14,19 +15,19 @@ PATHS FIXTURES
 
 @pytest.fixture(scope='module')
 def toy_cfg_path():
-    cfg_path = 'test/toy/config/warped_two_stage_ridge_regression.yaml'
+    cfg_path = 'test/toy/config/warped_two_stage_kernel_ridge_regression.yaml'
     return cfg_path
 
 
 @pytest.fixture(scope='module')
 def toy_scores_path():
-    scores_path = 'test/toy/outputs/warped-two-stage-ridge-regression/scores.metrics'
+    scores_path = 'test/toy/outputs/warped-two-stage-kernel-ridge-regression/scores.metrics'
     return scores_path
 
 
 @pytest.fixture(scope='module')
 def toy_state_dict_path():
-    state_dict_path = 'test/toy/outputs/warped-two-stage-ridge-regression/state_dict.pt'
+    state_dict_path = 'test/toy/outputs/warped-two-stage-kernel-ridge-regression/state_dict.pt'
     return state_dict_path
 
 
@@ -67,7 +68,7 @@ TESTING MODEL
 
 
 def make_model(cfg, data):
-    # Create aggregation operator
+    # Create aggregation operator over standardized heights
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
         return aggregated_grid
@@ -86,22 +87,39 @@ def make_model(cfg, data):
     else:
         raise ValueError("Unknown transform")
 
+    # Initialize RFF 2D covariates kernel
+    ard_num_dims = len(cfg['dataset']['2d_covariates']) + 3
+    kernel_2d = RFFKernel(nu=cfg['model']['nu_2d'],
+                          num_samples=cfg['model']['num_samples_2d'],
+                          ard_num_dims=ard_num_dims)
+    kernel_2d.lengthscale = cfg['model']['lengthscale_2d'] * torch.ones(ard_num_dims)
+    kernel_2d.raw_lengthscale.requires_grad = False
+
+    # Initialize RFF 3D covariates kernel
+    ard_num_dims = len(cfg['dataset']['3d_covariates']) + 4
+    kernel_3d = RFFKernel(nu=cfg['model']['nu_3d'],
+                          num_samples=cfg['model']['num_samples_3d'],
+                          ard_num_dims=ard_num_dims)
+    kernel_3d.lengthscale = cfg['model']['lengthscale_3d'] * torch.ones(ard_num_dims)
+    kernel_3d.raw_lengthscale.requires_grad = False
+
     # Fix weights initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Instantiate model
-    model = WarpedTwoStageAggregateRidgeRegression(lbda_2d=cfg['model']['lbda_2d'],
-                                                   lbda_3d=cfg['model']['lbda_3d'],
-                                                   transform=transform,
-                                                   aggregate_fn=trpz,
-                                                   ndim=len(cfg['dataset']['3d_covariates']) + 4,
-                                                   fit_intercept_2d=cfg['model']['fit_intercept_2d'],
-                                                   fit_intercept_3d=cfg['model']['fit_intercept_3d'])
+    model = WarpedTwoStageAggregateKernelRidgeRegression(kernel_2d=kernel_2d,
+                                                         kernel_3d=kernel_3d,
+                                                         training_covariates_3d=data.x_std,
+                                                         training_covariates_2d=data.y_std,
+                                                         lbda_2d=cfg['model']['lbda_2d'],
+                                                         lbda_3d=cfg['model']['lbda_3d'],
+                                                         transform=transform,
+                                                         aggregate_fn=trpz)
     return model
 
 
 def fit(model, data, cfg):
-    # Define optimizer and exact loglikelihood module
+    # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Initialize progress bar
@@ -115,7 +133,7 @@ def fit(model, data, cfg):
         # Compute prediction
         prediction = model(data.x_std)
         prediction_3d = prediction.reshape(*data.x_by_column_std.shape[:-1])
-        aggregate_prediction_2d = model.aggregate_prediction(prediction_3d.unsqueeze(-1), data.y_std)
+        aggregate_prediction_2d = model.aggregate_prediction(prediction_3d.unsqueeze(-1))
 
         # Compute loss
         loss = torch.square(aggregate_prediction_2d - data.z).mean()
@@ -126,7 +144,7 @@ def fit(model, data, cfg):
         optimizer.step()
 
         # Update progress bar
-        bar.suffix = f"Loss {loss.item()}"
+        bar.suffix = f"Loss {loss.item():e}"
         bar.next()
 
     return model

@@ -1,5 +1,4 @@
 import yaml
-import copy
 import pytest
 import torch
 from progress.bar import Bar
@@ -144,12 +143,11 @@ TESTS
 
 
 def test_parameters(fitted_model, toy_state_dict):
-    # Duplicate model and load toy weights
-    toy_model = copy.deepcopy(fitted_model)
-    toy_model.load_state_dict(toy_state_dict)
+    # Extract state dict from fitted model
+    fitted_state_dict = fitted_model.state_dict()
 
     # Check if models match
-    for (fitted_name, fitted_param), (toy_name, toy_param) in zip(fitted_model.named_parameters(), toy_model.named_parameters()):
+    for (fitted_name, fitted_param), (toy_name, toy_param) in zip(fitted_state_dict.items(), toy_state_dict.items()):
         assert fitted_name == toy_name
         assert torch.equal(fitted_param, toy_param)
 

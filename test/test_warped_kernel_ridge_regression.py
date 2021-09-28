@@ -2,10 +2,10 @@ import yaml
 import pytest
 import torch
 from progress.bar import Bar
-from src.models import WarpedTwoStageAggregateRidgeRegression
+from src.models import WarpedAggregateKernelRidgeRegression
+from src.kernels import RFFKernel
 from src.evaluation import metrics
 from test.toy import make_toy_data
-
 
 """
 PATHS FIXTURES
@@ -14,19 +14,19 @@ PATHS FIXTURES
 
 @pytest.fixture(scope='module')
 def toy_cfg_path():
-    cfg_path = 'test/toy/config/warped_two_stage_ridge_regression.yaml'
+    cfg_path = 'test/toy/config/warped_kernel_ridge_regression.yaml'
     return cfg_path
 
 
 @pytest.fixture(scope='module')
 def toy_scores_path():
-    scores_path = 'test/toy/outputs/warped-two-stage-ridge-regression/scores.metrics'
+    scores_path = 'test/toy/outputs/warped-kernel-ridge-regression/scores.metrics'
     return scores_path
 
 
 @pytest.fixture(scope='module')
 def toy_state_dict_path():
-    state_dict_path = 'test/toy/outputs/warped-two-stage-ridge-regression/state_dict.pt'
+    state_dict_path = 'test/toy/outputs/warped-kernel-ridge-regression/state_dict.pt'
     return state_dict_path
 
 
@@ -57,7 +57,7 @@ def toy_state_dict(toy_state_dict_path):
 
 @pytest.fixture(scope='module')
 def toy_data(toy_cfg):
-    toy_data = make_toy_data(cfg=toy_cfg, include_2d=True)
+    toy_data = make_toy_data(cfg=toy_cfg, include_2d=False)
     return toy_data
 
 
@@ -67,7 +67,7 @@ TESTING MODEL
 
 
 def make_model(cfg, data):
-    # Create aggregation operator
+    # Create aggregation operator over standardized heights
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
         return aggregated_grid
@@ -86,22 +86,28 @@ def make_model(cfg, data):
     else:
         raise ValueError("Unknown transform")
 
+    # Initialize kernel
+    ard_num_dims = len(cfg['dataset']['3d_covariates']) + 4
+    kernel = RFFKernel(nu=cfg['model']['nu'],
+                       num_samples=cfg['model']['num_samples'],
+                       ard_num_dims=ard_num_dims)
+    kernel.lengthscale = cfg['model']['lengthscale'] * torch.ones(ard_num_dims)
+    kernel.raw_lengthscale.requires_grad = False
+
     # Fix weights initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Instantiate model
-    model = WarpedTwoStageAggregateRidgeRegression(lbda_2d=cfg['model']['lbda_2d'],
-                                                   lbda_3d=cfg['model']['lbda_3d'],
-                                                   transform=transform,
-                                                   aggregate_fn=trpz,
-                                                   ndim=len(cfg['dataset']['3d_covariates']) + 4,
-                                                   fit_intercept_2d=cfg['model']['fit_intercept_2d'],
-                                                   fit_intercept_3d=cfg['model']['fit_intercept_3d'])
+    model = WarpedAggregateKernelRidgeRegression(kernel=kernel,
+                                                 training_covariates=data.x_std,
+                                                 lbda=cfg['model']['lbda'],
+                                                 transform=transform,
+                                                 aggregate_fn=trpz)
     return model
 
 
 def fit(model, data, cfg):
-    # Define optimizer and exact loglikelihood module
+    # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Initialize progress bar
@@ -115,7 +121,7 @@ def fit(model, data, cfg):
         # Compute prediction
         prediction = model(data.x_std)
         prediction_3d = prediction.reshape(*data.x_by_column_std.shape[:-1])
-        aggregate_prediction_2d = model.aggregate_prediction(prediction_3d.unsqueeze(-1), data.y_std)
+        aggregate_prediction_2d = model.aggregate_prediction(prediction_3d.unsqueeze(-1)).squeeze()
 
         # Compute loss
         loss = torch.square(aggregate_prediction_2d - data.z).mean()
@@ -126,7 +132,7 @@ def fit(model, data, cfg):
         optimizer.step()
 
         # Update progress bar
-        bar.suffix = f"Loss {loss.item()}"
+        bar.suffix = f"Loss {loss.item():e}"
         bar.next()
 
     return model

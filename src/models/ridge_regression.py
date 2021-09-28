@@ -110,8 +110,7 @@ class TwoStageAggregateRidgeRegression(nn.Module):
 
         # Compute second regression stage
         Q_3d = (y_upsilon.t() @ y_upsilon + n_bags * self.lbda_3d * torch.eye(d_3d))
-        with gpytorch.settings.cholesky_jitter(1e-3):
-            beta = gpytorch.inv_matmul(Q_3d, y_upsilon.t() @ aggregate_targets)
+        beta = gpytorch.inv_matmul(Q_3d, y_upsilon.t() @ aggregate_targets)
         self.register_buffer('beta', beta)
 
     def forward(self, x):
@@ -132,6 +131,8 @@ class TwoStageAggregateRidgeRegression(nn.Module):
 
 class WarpedAggregateRidgeRegression(nn.Module):
     """Ridge regression warped with link function when aggregate targets only are observed
+
+        *** Current implementation assumes all columns have same size ***
 
     Args:
         lbda (float): regularization weight, greater = stronger L2 penalty
@@ -188,6 +189,8 @@ class WarpedAggregateRidgeRegression(nn.Module):
 class WarpedTwoStageAggregateRidgeRegression(nn.Module):
     """Two-stage aggregate ridge regression warped with link function when aggregate
     targets only are observed
+
+        *** Current implementation assumes all columns have same size ***
 
     Args:
         lbda_2d (float): regularization weight for first stage, greater = stronger L2 penalty
