@@ -66,7 +66,7 @@ def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
     mae = torch.abs(difference).mean()
 
     # Compute normalized distances metrics
-    q25, q75 = torch.quantile(targets_2d, torch.tensor(q=[0.25, 0.75]))
+    q25, q75 = torch.quantile(targets_2d, q=torch.tensor([0.25, 0.75]))
     nrmse = rmse.div(q75 - q25)
     nmae = mae.div(q75 - q25)
 
@@ -100,7 +100,7 @@ def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
     mae = torch.abs(difference).mean()
 
     # Compute normalized distances metrics
-    q25, q75 = torch.quantile(groundtruth_3d, torch.tensor(q=[0.25, 0.75]))
+    q25, q75 = torch.quantile(groundtruth_3d, q=torch.tensor([0.25, 0.75]))
     nrmse = rmse.div(q75 - q25)
     nmae = mae.div(q75 - q25)
 
@@ -140,7 +140,7 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
     corr = np.mean([spearman_correlation(pred, gt) for (pred, gt) in zip(prediction_3d, groundtruth_3d)])
 
     # Compute normalized distances metrics
-    q25, q75 = torch.quantile(groundtruth_3d, torch.tensor(q=[0.25, 0.75]))
+    q25, q75 = torch.quantile(groundtruth_3d, q=torch.tensor([0.25, 0.75]))
     nrmse = rmse.div(q75 - q25)
     nmae = mae.div(q75 - q25)
 
