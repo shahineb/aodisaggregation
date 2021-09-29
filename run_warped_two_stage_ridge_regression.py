@@ -83,7 +83,7 @@ def make_model(cfg, data):
                                                    ndim=len(cfg['dataset']['3d_covariates']) + 4,
                                                    fit_intercept_2d=cfg['model']['fit_intercept_2d'],
                                                    fit_intercept_3d=cfg['model']['fit_intercept_3d'])
-    return model
+    return model.to(device)
 
 
 def fit(model, data, cfg):
@@ -115,7 +115,7 @@ def fit(model, data, cfg):
         bar.suffix = f"Loss {loss.item():e}"
         bar.next()
 
-    return model
+    return model.to(device)
 
 
 def predict(model, data):

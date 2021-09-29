@@ -74,34 +74,34 @@ def make_model(cfg, data):
         raise ValueError("Unknown transform")
 
     # Initialize RFF 2D covariates kernel
-    ard_num_dims = len(cfg['dataset']['2d_covariates']) + 3
+    ard_num_dims_2d = len(cfg['dataset']['2d_covariates']) + 3
     kernel_2d = RFFKernel(nu=cfg['model']['nu_2d'],
                           num_samples=cfg['model']['num_samples_2d'],
-                          ard_num_dims=ard_num_dims)
-    kernel_2d.lengthscale = cfg['model']['lengthscale_2d'] * torch.ones(ard_num_dims)
+                          ard_num_dims=ard_num_dims_2d)
+    kernel_2d.lengthscale = cfg['model']['lengthscale_2d'] * torch.ones(ard_num_dims_2d)
     kernel_2d.raw_lengthscale.requires_grad = False
 
     # Initialize RFF 3D covariates kernel
-    ard_num_dims = len(cfg['dataset']['3d_covariates']) + 4
+    ard_num_dims_3d = len(cfg['dataset']['3d_covariates']) + 4
     kernel_3d = RFFKernel(nu=cfg['model']['nu_3d'],
                           num_samples=cfg['model']['num_samples_3d'],
-                          ard_num_dims=ard_num_dims)
-    kernel_3d.lengthscale = cfg['model']['lengthscale_3d'] * torch.ones(ard_num_dims)
+                          ard_num_dims=ard_num_dims_3d)
+    kernel_3d.lengthscale = cfg['model']['lengthscale_3d'] * torch.ones(ard_num_dims_3d)
     kernel_3d.raw_lengthscale.requires_grad = False
 
     # Fix weights initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Instantiate model
-    model = WarpedTwoStageAggregateKernelRidgeRegression(kernel_2d=kernel_2d,
-                                                         kernel_3d=kernel_3d,
+    model = WarpedTwoStageAggregateKernelRidgeRegression(kernel_2d=kernel_2d.to(device),
+                                                         kernel_3d=kernel_3d.to(device),
                                                          training_covariates_3d=data.x_std,
                                                          training_covariates_2d=data.y_std,
                                                          lbda_2d=cfg['model']['lbda_2d'],
                                                          lbda_3d=cfg['model']['lbda_3d'],
                                                          transform=transform,
                                                          aggregate_fn=trpz)
-    return model
+    return model.to(device)
 
 
 def fit(model, data, cfg):

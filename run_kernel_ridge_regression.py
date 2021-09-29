@@ -69,7 +69,7 @@ def make_model(cfg, data):
     model = AggregateKernelRidgeRegression(kernel=kernel,
                                            lbda=cfg['model']['lbda'],
                                            aggregate_fn=trpz)
-    return model
+    return model.to(device)
 
 
 def fit(cfg, model, data):

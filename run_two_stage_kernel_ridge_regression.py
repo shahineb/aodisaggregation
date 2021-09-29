@@ -79,7 +79,7 @@ def make_model(cfg, data):
                                                    lbda_2d=cfg['model']['lbda_2d'],
                                                    lbda_3d=cfg['model']['lbda_3d'],
                                                    aggregate_fn=trpz)
-    return model
+    return model.to(device)
 
 
 def fit(cfg, model, data):

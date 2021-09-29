@@ -80,7 +80,7 @@ def make_model(cfg, data):
                                            aggregate_fn=trpz,
                                            ndim=len(cfg['dataset']['3d_covariates']) + 4,
                                            fit_intercept=cfg['model']['fit_intercept'])
-    return model
+    return model.to(device)
 
 
 def fit(model, data, cfg):

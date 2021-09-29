@@ -48,14 +48,11 @@ class AggregateKernelRidgeRegression(nn.Module):
         n_bags = individuals_covariates.size(0)
         d = individuals_covariates.size(-1)
 
-        # Register training samples for prediction later
-        self.register_buffer('training_covariates', individuals_covariates)
-
         # Sample random fourier features weights
         self.kernel._init_weights(d, self.kernel.num_samples)
 
         # Compute random fourier features - Shape = (n_bags, bags_size, self.kernel.num_samples)
-        Z = self.kernel._featurize(self.training_covariates, normalize=True)
+        Z = self.kernel._featurize(individuals_covariates, normalize=True)
 
         # Aggregate random fourier features - Shape = (self.kernel.num_samples, n_bags)
         aggZ = self.aggregate_fn(Z).t()

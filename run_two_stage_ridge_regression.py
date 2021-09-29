@@ -64,7 +64,7 @@ def make_model(cfg, data):
                                              aggregate_fn=trpz,
                                              fit_intercept_2d=cfg['model']['fit_intercept_2d'],
                                              fit_intercept_3d=cfg['model']['fit_intercept_3d'])
-    return model
+    return model.to(device)
 
 
 def fit(model, data):

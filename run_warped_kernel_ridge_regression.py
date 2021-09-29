@@ -47,7 +47,7 @@ def main(args, cfg):
 def migrate_to_device(data):
     # These are the only tensors needed on device to run this experiment
     data = data._replace(x_std=data.x_std.to(device),
-                         z_std=data.z.to(device),
+                         z=data.z.to(device),
                          h=data.h.to(device))
     return data
 
@@ -84,12 +84,12 @@ def make_model(cfg, data):
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Instantiate model
-    model = WarpedAggregateKernelRidgeRegression(kernel=kernel,
+    model = WarpedAggregateKernelRidgeRegression(kernel=kernel.to(device),
                                                  training_covariates=data.x_std,
                                                  lbda=cfg['model']['lbda'],
                                                  transform=transform,
                                                  aggregate_fn=trpz)
-    return model
+    return model.to(device)
 
 
 def fit(model, data, cfg):
