@@ -36,7 +36,7 @@ class AggregateRidgeRegression(nn.Module):
         d = individuals_covariates.size(-1)
 
         aggX = self.aggregate_fn(individuals_covariates).t()
-        Q = aggX @ aggX.t() + n_bags * self.lbda * torch.eye(d)
+        Q = aggX @ aggX.t() + n_bags * self.lbda * torch.eye(d, device=aggX.device)
 
         beta = gpytorch.inv_matmul(Q, aggX @ aggregate_targets)
         self.register_buffer('beta', beta)
