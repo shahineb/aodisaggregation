@@ -6,6 +6,7 @@ Usage: run_two_stage_kernel_ridge_regression.py  [options] --cfg=<path_to_config
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
   --o=<output_dir>                 Output directory.
+  --device=<device_index>          Device to use [default: cpu]
   --plot                           Outputs plots.
 """
 import os
@@ -24,6 +25,9 @@ def main(args, cfg):
     logging.info("Loading dataset")
     data = make_data(cfg=cfg, include_2d=True)
 
+    # Move needed tensors only to device
+    data = migrate_to_device(data=data)
+
     # Instantiate model
     model = make_model(cfg=cfg, data=data)
     logging.info(f"{model}")
@@ -37,6 +41,16 @@ def main(args, cfg):
 
     # Run evaluation
     evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+
+
+def migrate_to_device(data):
+    # These are the only tensors needed on device to run this experiment
+    data = data._replace(x_by_column_std=data.x_by_column_std.to(device),
+                         x_std=data.x_std.to(device),
+                         y_std=data.y_std.to(device),
+                         z_std=data.z_std.to(device),
+                         h_std=data.h_std.to(device))
+    return data
 
 
 def make_model(cfg, data):
@@ -85,8 +99,9 @@ def predict(model, data):
         # Reshape as (time, lat, lon, lev) grid
         prediction_3d_std = prediction.reshape(*data.gt_grid.shape)
 
-        # Unnormalize with mean and variance of observed aggregte targets – groundtruth 3D field is unobserved
-        prediction_3d = data.z_grid.std() * (prediction_3d_std + data.z_grid.mean()) / data.h.std()
+        # Unnormalize with mean and variance of observed aggregte targets – because groundtruth 3D field is unobserved
+        mean_z, sigma_z, sigma_h = data.z_grid.mean().to(device), data.z_grid.std().to(device), data.h.std().to(device)
+        prediction_3d = sigma_z * (prediction_3d_std + mean_z) / sigma_h
     return prediction_3d
 
 
@@ -97,7 +112,7 @@ def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
         return aggregated_grid
 
     # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d,
+    dump_scores(prediction_3d=prediction_3d.cpu(),
                 groundtruth_3d=data.gt_grid,
                 targets_2d=data.z_grid,
                 aggregate_fn=trpz,
@@ -107,7 +122,7 @@ def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     if plot:
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
-                   prediction_3d=prediction_3d,
+                   prediction_3d=prediction_3d.cpu(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
@@ -134,6 +149,12 @@ if __name__ == "__main__":
     os.makedirs(args['--o'], exist_ok=True)
     with open(os.path.join(args['--o'], 'cfg.yaml'), 'w') as f:
         yaml.dump(cfg, f)
+
+    # Setup global variable for device
+    if torch.cuda.is_available() and args['--device'].isdigit():
+        device = torch.device(f"cuda:{args['--device']}")
+    else:
+        device = torch.device('cpu')
 
     # Run session
     main(args, cfg)

@@ -47,9 +47,6 @@ def migrate_to_device(data):
     data = data._replace(x_by_column_std=data.x_by_column_std.to(device),
                          x_std=data.x_std.to(device),
                          z_std=data.z_std.to(device),
-                         z_grid=data.z_grid.to(device),
-                         gt_grid=data.gt_grid.to(device),
-                         h=data.h.to(device),
                          h_std=data.h_std.to(device))
     return data
 
@@ -80,21 +77,22 @@ def predict(model, data):
         # Reshape as (time, lat, lon, lev) grid
         prediction_3d_std = prediction.reshape(*data.gt_grid.shape)
 
-        # Unnormalize with mean and variance of observed aggregte targets – groundtruth 3D field is unobserved
-        prediction_3d = data.z_grid.std() * (prediction_3d_std + data.z_grid.mean()) / data.h.std()
+        # Unnormalize with mean and variance of observed aggregte targets – because groundtruth 3D field is unobserved
+        mean_z, sigma_z, sigma_h = data.z_grid.mean().to(device), data.z_grid.std().to(device), data.h.std().to(device)
+        prediction_3d = sigma_z * (prediction_3d_std + mean_z) / sigma_h
     return prediction_3d
 
 
 def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1).cpu(), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Dump scores in output dir
     dump_scores(prediction_3d=prediction_3d.cpu(),
-                groundtruth_3d=data.gt_grid.cpu(),
-                targets_2d=data.z_grid.cpu(),
+                groundtruth_3d=data.gt_grid,
+                targets_2d=data.z_grid,
                 aggregate_fn=trpz,
                 output_dir=output_dir)
 

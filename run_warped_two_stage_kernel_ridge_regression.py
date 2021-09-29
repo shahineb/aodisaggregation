@@ -6,6 +6,7 @@ Usage: run_warped_two_stage_kernel_ridge_regression.py  [options] --cfg=<path_to
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
   --o=<output_dir>                 Output directory.
+  --device=<device_index>          Device to use [default: cpu]
   --plot                           Outputs plots.
 """
 import os
@@ -25,6 +26,9 @@ def main(args, cfg):
     logging.info("Loading dataset")
     data = make_data(cfg=cfg, include_2d=True)
 
+    # Move needed tensors only to device
+    data = migrate_to_device(data=data)
+
     # Instantiate model
     model = make_model(cfg=cfg, data=data)
     logging.info(f"{model}")
@@ -38,6 +42,15 @@ def main(args, cfg):
 
     # Run evaluation
     evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+
+
+def migrate_to_device(data):
+    # These are the only tensors needed on device to run this experiment
+    data = data._replace(x_std=data.x_std.to(device),
+                         y_std=data.y_std.to(device),
+                         z=data.z.to(device),
+                         h=data.h.to(device))
+    return data
 
 
 def make_model(cfg, data):
@@ -136,11 +149,11 @@ def predict(model, data):
 def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1).cpu(), dim=-2)
         return aggregated_grid
 
     # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d,
+    dump_scores(prediction_3d=prediction_3d.cpu(),
                 groundtruth_3d=data.gt_grid,
                 targets_2d=data.z_grid,
                 aggregate_fn=trpz,
@@ -150,7 +163,7 @@ def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     if plot:
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
-                   prediction_3d=prediction_3d,
+                   prediction_3d=prediction_3d.cpu(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
@@ -177,6 +190,12 @@ if __name__ == "__main__":
     os.makedirs(args['--o'], exist_ok=True)
     with open(os.path.join(args['--o'], 'cfg.yaml'), 'w') as f:
         yaml.dump(cfg, f)
+
+    # Setup global variable for device
+    if torch.cuda.is_available() and args['--device'].isdigit():
+        device = torch.device(f"cuda:{args['--device']}")
+    else:
+        device = torch.device('cpu')
 
     # Run session
     main(args, cfg)
