@@ -69,7 +69,7 @@ TESTING MODEL
 def make_model(cfg, data):
     # Create aggregation operator over standardized heights
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Define warping transformation
@@ -164,10 +164,10 @@ def test_prediction(fitted_model, toy_data, toy_scores, toy_cfg):
     # Run prediction
     with torch.no_grad():
         prediction = fitted_model(toy_data.x_std)
-        prediction_3d = prediction.reshape(*toy_data.gt_grid.shape)
+        prediction_3d = prediction.reshape(*toy_data.h_by_column.shape)
 
     # Compute scores
-    scores = metrics.compute_scores(prediction_3d, toy_data.gt_grid, toy_data.z_grid, fitted_model.aggregate_fn)
+    scores = metrics.compute_scores(prediction_3d, toy_data.gt_by_column, toy_data.z, fitted_model.aggregate_fn)
 
     # Check if matches what is expected
     assert scores == toy_scores

@@ -48,14 +48,14 @@ def migrate_to_device(data):
     data = data._replace(x_by_column_std=data.x_by_column_std.to(device),
                          x_std=data.x_std.to(device),
                          z_std=data.z_std.to(device),
-                         h_std=data.h_std.to(device))
+                         h_by_column_std=data.h_by_column_std.to(device))
     return data
 
 
 def make_model(cfg, data):
     # Create aggregation operator over standardized heights
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h_std.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Initialize RFF kernel
@@ -86,11 +86,11 @@ def predict(model, data):
         # Predict on standardized 3D covariates
         prediction = model(data.x_std)
 
-        # Reshape as (time, lat, lon, lev) grid
-        prediction_3d_std = prediction.reshape(*data.gt_grid.shape)
+        # Reshape as (time * lat * lon, lev) grid
+        prediction_3d_std = prediction.reshape(*data.h_by_column.shape)
 
         # Unnormalize with mean and variance of observed aggregte targets – because groundtruth 3D field is unobserved
-        mean_z, sigma_z, sigma_h = data.z_grid.mean().to(device), data.z_grid.std().to(device), data.h.std().to(device)
+        mean_z, sigma_z, sigma_h = data.z.mean().to(device), data.z.std().to(device), data.h_by_column.std().to(device)
         prediction_3d = sigma_z * (prediction_3d_std + mean_z) / sigma_h
     return prediction_3d
 
@@ -98,13 +98,13 @@ def predict(model, data):
 def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Dump scores in output dir
     dump_scores(prediction_3d=prediction_3d.cpu(),
-                groundtruth_3d=data.gt_grid,
-                targets_2d=data.z_grid,
+                groundtruth_3d=data.gt_by_column,
+                targets_2d=data.z,
                 aggregate_fn=trpz,
                 output_dir=output_dir)
 

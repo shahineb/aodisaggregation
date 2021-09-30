@@ -29,11 +29,10 @@ field_names = ['dataset',
                'y_std',
                'z',
                'z_std',
-               'z_grid',
-               'gt_grid',
-               'h',
-               'h_std']
-ToyData = namedtuple(typename='ToyData', field_names=field_names, defaults=(None,) * len(field_names))
+               'gt_by_column',
+               'h_by_column',
+               'h_by_column_std']
+Data = namedtuple(typename='Data', field_names=field_names, defaults=(None,) * len(field_names))
 
 
 def make_toy_data(cfg, include_2d=False):
@@ -54,7 +53,7 @@ def make_toy_data(cfg, include_2d=False):
     # Load dataset as defined in main code
     dataset = load_dataset(cfg['dataset']['path'])
 
-    # Subset used for testing
+    # TODO : DISABLE IN FINAL VERSION – Subset to speed up testing
     dataset = dataset.isel(lat=slice(30, 60), lon=slice(35, 55), time=slice(0, 3))
 
     # Compute standardized version
@@ -71,10 +70,10 @@ def make_toy_data(cfg, include_2d=False):
     z_grid_std, z_grid, z_std, z = _make_z_tensors(cfg, dataset, standard_dataset)
 
     # Make 3D groundtruth tensor
-    gt_grid = _make_groundtruth_tensors(cfg, dataset, standard_dataset)
+    gt_grid, gt_by_column = _make_groundtruth_tensors(cfg, dataset, standard_dataset)
 
     # Make height tensors for integration
-    h_grid_std, h_grid, h_std, h = _make_h_tensors(cfg, dataset, standard_dataset)
+    h_grid_std, h_grid, h_by_column_std, h_by_column = _make_h_tensors(cfg, dataset, standard_dataset)
 
     # Encapsulate into named tuple object
     kwargs = {'dataset': dataset,
@@ -83,15 +82,25 @@ def make_toy_data(cfg, include_2d=False):
               'x_std': x_std,
               'z': z,
               'z_std': z_std,
-              'z_grid': z_grid,
-              'gt_grid': gt_grid,
-              'h': h,
-              'h_std': h_std,
+              'gt_by_column': gt_by_column,
+              'h_by_column': h_by_column,
+              'h_by_column_std': h_by_column_std,
               }
     if include_2d:
         kwargs.update({'y_std': y_std})
-    data = ToyData(**kwargs)
+    data = Data(**kwargs)
     return data
+
+
+# def split_data(data, train_idx, test_idx):
+#     # Make training tensors - PUTTING A PIN ON THIS
+#     train_x_by_column_std = data.x_by_column_std[train_idx]
+#     train_x_std = train_x_by_column_std.view(-1, data.x_std.size(-1))
+#     train_z = data.z[train_idx]
+#     train_z_std = data.z_std[train_idx]
+#     train_z_grid = train_z.view(???)
+#     train_h = data.h[train_idx]
+#     train_h_std = data.h_std[train_idx]
 
 
 def _make_x_tensors(cfg, dataset, standard_dataset):
@@ -184,6 +193,10 @@ def _make_groundtruth_tensors(cfg, dataset, standard_dataset):
 
         `gt_grid`:
             - (time, lat, lon, lev) non-standardized tensor
+            - No usage
+
+        `gt_by_column`:
+            - (time * lat * lon, lev) non-standardized tensor
             - Used for evaluation
 
     Returns:
@@ -192,7 +205,10 @@ def _make_groundtruth_tensors(cfg, dataset, standard_dataset):
     """
     # Convert into pytorch tensors
     gt_grid = make_3d_tensor(dataset=dataset, variable_key=cfg['dataset']['groundtruth'])
-    return gt_grid
+
+    # Reshape tensors
+    gt_by_column = gt_grid.reshape(-1, gt_grid.size(-1))
+    return gt_grid, gt_by_column
 
 
 def _make_h_tensors(cfg, dataset, standard_dataset):
@@ -206,11 +222,11 @@ def _make_h_tensors(cfg, dataset, standard_dataset):
             - (time, lat, lon, lev) non-standardized tensor
             - No usage
 
-        `h_std`:
+        `h_by_column_std`:
             - (time * lat * lon, lev) standardized tensor
             - Used to aggregate against standardized height levels for training – stabilizes fitting computations
 
-        `h`:
+        `h_by_column`:
             - (time * lat * lon, lev) non-standardized tensor
             - Used to unstandardized prediction and aggregate groundtruth against height at evaluation
 
@@ -223,6 +239,6 @@ def _make_h_tensors(cfg, dataset, standard_dataset):
     h_grid = make_3d_tensor(dataset=dataset, variable_key='height')
 
     # Reshape tensors
-    h_std = h_grid_std.reshape(-1, h_grid.size(-1))
-    h = h_grid.reshape(-1, h_grid.size(-1))
-    return h_grid_std, h_grid, h_std, h
+    h_by_column_std = h_grid_std.reshape(-1, h_grid.size(-1))
+    h_by_column = h_grid.reshape(-1, h_grid.size(-1))
+    return h_grid_std, h_grid, h_by_column_std, h_by_column

@@ -7,10 +7,10 @@ def compute_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn):
     """Computes prediction scores
 
     Args:
-        prediction_3d (torch.Tensor): (time, lat, lon, lev)
-        groundtruth_3d (torch.Tensor): (time, lat, lon, lev)
-        targets_2d (torch.Tensor): (time, lat, lon)
-        aggregate_fn (callable): callable used to aggregate (time, lat, lon, lev, -1) -> (time, lat, lo)
+        prediction_3d (torch.Tensor): (time * lat * lon, lev)
+        groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
+        targets_2d (torch.Tensor): (time * lat * lon)
+        aggregate_fn (callable): callable used to aggregate (time * lat * lon, lev, -1) -> (time * lat * lon, -1)
 
     Returns:
         type: Description of returned object.
@@ -47,21 +47,19 @@ def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
     2D+t aggregate targets used for training
 
     Args:
-        prediction_3d (torch.Tensor): (time, lat, lon, lev)
-        targets_2d (torch.Tensor): (time, lat, lon)
-        aggregate_fn (callable): callable used to aggregate (time, lat, lon, lev, -1) -> (time, lat, lon)
+        prediction_3d (torch.Tensor): (time * lat * lon, lev)
+        targets_2d (torch.Tensor): (time * lat * lon)
+        aggregate_fn (callable): callable used to aggregate (time * lat * lon, lev, -1) -> (time * lat * lon, -1)
 
     Returns:
         type: dict[float]
 
     """
-    # Get prediction into shape that the aggregation function expects and aggregate
-    n_col = prediction_3d.size(0) * prediction_3d.size(1) * prediction_3d.size(2)
-    prediction_3d = prediction_3d.reshape(n_col, -1)
-    aggregate_prediction_2d = aggregate_fn(prediction_3d.unsqueeze(-1)).squeeze().flatten()
+    # Aggregate prediction along height
+    aggregate_prediction_2d = aggregate_fn(prediction_3d.unsqueeze(-1)).squeeze()
 
     # Compute raw distances metrics
-    difference = aggregate_prediction_2d.sub(targets_2d.flatten())
+    difference = aggregate_prediction_2d.sub(targets_2d)
     rmse = torch.square(difference).mean().sqrt()
     mae = torch.abs(difference).mean()
 
@@ -71,7 +69,7 @@ def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
     nmae = mae.div(q75 - q25)
 
     # Compute spearman correlation
-    corr = spearman_correlation(aggregate_prediction_2d.flatten(), targets_2d.flatten())
+    corr = spearman_correlation(aggregate_prediction_2d, targets_2d)
 
     # Encapsulate results in output dictionnary
     output = {'rmse': rmse.item(),
@@ -87,8 +85,8 @@ def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
     Metrics are averaged isotropically accross all dimensions.
 
     Args:
-        prediction_3d (torch.Tensor): (time, lat, lon, lev)
-        groundtruth_3d (torch.Tensor): (time, lat, lon, lev)
+        prediction_3d (torch.Tensor): (time * lat * lon, lev)
+        groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
 
     Returns:
         type: dict[float]
@@ -121,17 +119,14 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
     Metrics are computed for vertical profiles and then averaged over time, lat, lon.
 
     Args:
-        prediction_3d (torch.Tensor): (time, lat, lon, lev)
-        groundtruth_3d (torch.Tensor): (time, lat, lon, lev)
+        prediction_3d (torch.Tensor): (time * lat * lon, lev)
+        groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
 
     Returns:
         type: dict[float]
 
     """
-    # Reshape tensors as (n_columns, lev)
-    n_col = prediction_3d.size(0) * prediction_3d.size(1) * prediction_3d.size(2)
-    prediction_3d = prediction_3d.reshape(n_col, -1)
-    groundtruth_3d = groundtruth_3d.reshape(n_col, -1)
+    # Compute difference tensor
     difference = prediction_3d.sub(groundtruth_3d)
 
     # Compute metrics columnwise and average out

@@ -68,7 +68,7 @@ TESTING MODEL
 def make_model(cfg, data):
     # Create aggregation operator over standardized heights
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h_std.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Initialize RFF kernel
@@ -120,13 +120,13 @@ def test_prediction(fitted_model, toy_data, toy_scores):
     # Run prediction
     with torch.no_grad():
         prediction = fitted_model(toy_data.x_std)
-        prediction_3d_std = prediction.reshape(*toy_data.gt_grid.shape)
-        prediction_3d = toy_data.z_grid.std() * (prediction_3d_std + toy_data.z_grid.mean()) / toy_data.h.std()
+        prediction_3d_std = prediction.reshape(*toy_data.h_by_column.shape)
+        prediction_3d = toy_data.z.std() * (prediction_3d_std + toy_data.z.mean()) / toy_data.h_by_column.std()
 
     # Define aggregation wrt height with trapezoidal rule
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=toy_data.h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=toy_data.h_by_column.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
-    scores = metrics.compute_scores(prediction_3d, toy_data.gt_grid, toy_data.z_grid, trpz)
+    scores = metrics.compute_scores(prediction_3d, toy_data.gt_by_column, toy_data.z, trpz)
     assert scores == toy_scores

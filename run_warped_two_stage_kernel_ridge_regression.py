@@ -49,14 +49,14 @@ def migrate_to_device(data):
     data = data._replace(x_std=data.x_std.to(device),
                          y_std=data.y_std.to(device),
                          z=data.z.to(device),
-                         h=data.h.to(device))
+                         h_by_column=data.h_by_column.to(device))
     return data
 
 
 def make_model(cfg, data):
     # Create aggregation operator over standardized heights
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Define warping transformation
@@ -118,7 +118,7 @@ def fit(model, data, cfg):
 
         # Compute prediction
         prediction = model(data.x_std)
-        prediction_3d = prediction.reshape(*data.x_by_column_std.shape[:-1])
+        prediction_3d = prediction.reshape(*data.h_by_column.shape)
         aggregate_prediction_2d = model.aggregate_prediction(prediction_3d.unsqueeze(-1))
 
         # Compute loss
@@ -141,21 +141,21 @@ def predict(model, data):
         # Predict on standardized 3D covariates
         prediction = model(data.x_std)
 
-        # Reshape as (time, lat, lon, lev) grid
-        prediction_3d = prediction.reshape(*data.gt_grid.shape)
+        # Reshape as (time * lat * lon, lev) grid
+        prediction_3d = prediction.reshape(*data.h_by_column.shape)
     return prediction_3d
 
 
 def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1).cpu(), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
         return aggregated_grid
 
     # Dump scores in output dir
     dump_scores(prediction_3d=prediction_3d.cpu(),
-                groundtruth_3d=data.gt_grid,
-                targets_2d=data.z_grid,
+                groundtruth_3d=data.gt_by_column,
+                targets_2d=data.z,
                 aggregate_fn=trpz,
                 output_dir=output_dir)
 
