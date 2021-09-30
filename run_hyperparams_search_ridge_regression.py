@@ -18,7 +18,7 @@ from sklearn.model_selection import KFold
 from src.preprocessing import make_data, split_data
 from src.models import AggregateRidgeRegression
 from src.evaluation import dump_scores
-from utils import product_dict
+from utils import product_dict, flatten_dict_as_str
 from run_ridge_regression import migrate_to_device, fit, predict
 
 
@@ -40,7 +40,7 @@ def main(args, cfg):
     for j, hyperparams in enumerate(hyperparams_grid):
 
         # Flatten out hyperparameters into string to name output directory
-        dirname = '_'.join(f'{k}={v}' for k, v in hyperparams.items())
+        dirname = flatten_dict_as_str(hyperparams)
         output_dir = os.path.join(args['--o'], dirname)
 
         # Create directory and dump current set of hyperparameters

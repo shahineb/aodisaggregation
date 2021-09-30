@@ -1,1 +1,1 @@
-from .itertools import *
+from .dict import *

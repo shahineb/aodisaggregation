@@ -15,3 +15,8 @@ def product_dict(**kwargs):
     vals = kwargs.values()
     for instance in itertools.product(*vals):
         yield dict(zip(keys, instance))
+
+
+def flatten_dict_as_str(my_dict):
+    dict_as_str = '_'.join(f'{k}={v}' for k, v in my_dict.items())
+    return dict_as_str
