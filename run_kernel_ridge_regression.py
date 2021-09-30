@@ -107,6 +107,7 @@ def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
                 targets_2d=data.z,
                 aggregate_fn=trpz,
                 output_dir=output_dir)
+    logging.info("Dumped scores")
 
     # Dump plots in output dir
     if plot:

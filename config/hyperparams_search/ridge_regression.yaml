@@ -1,0 +1,48 @@
+################################################################################
+#   CONFIGURATIONS FOR HYPERPARAMETERS TUNING WITH AGGREGATE RIDGE REGRESSION
+################################################################################
+
+# DATASET
+dataset:
+  # Path to main model data .nc file
+  path: data/all_aod_global_updated_ds_06_06_2008.nc
+
+  # Variables to use as 3D covariates
+  3d_covariates:
+    - ATTBETA_TOT_SPACE_533nm
+    - relhum
+
+  # Variable to use as 2D aggregate target
+  target: ALFA_AER_533nm_2D
+
+  # Variable corresponding to unobserved groundtruth 3D field
+  groundtruth: ALFA_AER_533nm
+
+
+
+# GRID SEARCH
+search:
+  # Number of cross-validation splits to use
+  n_splits: 5
+
+  # Search grid
+  grid:
+    # L2 regularization weight
+    lbda:
+      - 0.00001
+      - 0.0001
+      - 0.001
+      - 0.01
+      - 0.1
+      - 1
+      - 10
+
+    # Whether to use bias or not
+    fit_intercept:
+      - True
+      - False
+
+
+
+# EVALUATION
+evaluation:

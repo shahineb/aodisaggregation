@@ -1,6 +1,5 @@
 import os
 import yaml
-import logging
 import torch
 import matplotlib.pyplot as plt
 from src.evaluation import metrics
@@ -12,7 +11,6 @@ def dump_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn, output_
     dump_path = os.path.join(output_dir, 'scores.metrics')
     with open(dump_path, 'w') as f:
         yaml.dump(scores, f)
-    logging.info(f"Dumped scores at {dump_path}")
 
 
 def dump_plots(cfg, dataset, prediction_3d, aggregate_fn, output_dir):
