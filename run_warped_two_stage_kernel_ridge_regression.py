@@ -27,7 +27,7 @@ def main(args, cfg):
     data = make_data(cfg=cfg, include_2d=True)
 
     # Move needed tensors only to device
-    data = migrate_to_device(data=data)
+    data = migrate_to_device(data=data, device=device)
 
     # Instantiate model
     model = make_model(cfg=cfg, data=data)
@@ -44,7 +44,7 @@ def main(args, cfg):
     evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
-def migrate_to_device(data):
+def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
     data = data._replace(x_std=data.x_std.to(device),
                          y_std=data.y_std.to(device),

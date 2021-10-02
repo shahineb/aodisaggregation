@@ -26,7 +26,7 @@ def main(args, cfg):
     data = make_data(cfg=cfg, include_2d=False)
 
     # Move needed tensors only to device
-    data = migrate_to_device(data=data)
+    data = migrate_to_device(data=data, device=device)
 
     # Instantiate model
     model = make_model(cfg=cfg, data=data)
@@ -37,13 +37,13 @@ def main(args, cfg):
     logging.info("Fitted model")
 
     # Run prediction
-    prediction_3d = predict(model=model, data=data)
+    prediction_3d = predict(model=model, data=data, device=device)
 
     # Run evaluation
     evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
-def migrate_to_device(data):
+def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
     data = data._replace(x_by_column_std=data.x_by_column_std.to(device),
                          x_std=data.x_std.to(device),
@@ -81,7 +81,7 @@ def fit(cfg, model, data):
     return model
 
 
-def predict(model, data):
+def predict(model, data, device):
     with torch.no_grad():
         # Predict on standardized 3D covariates
         prediction = model(data.x_std)
