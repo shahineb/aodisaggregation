@@ -23,6 +23,7 @@ def main(args):
         cfg = yaml.safe_load(f)
 
     # Load all scores in xarray dataset with hyperparameters as dimensions
+    logging.info("Loading grid search scores... (can take a while)")
     scores_dataset = open_scores_as_xarray(dirpath=args['--i'], cfg=cfg)
     logging.info(f"Loaded grid search scores \n {scores_dataset}")
 

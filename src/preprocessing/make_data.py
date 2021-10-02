@@ -124,7 +124,7 @@ def split_data(data, train_idx, test_idx):
                    'h_by_column': data.h_by_column[test_idx],
                    'h_by_column_std': data.h_by_column_std[test_idx]}
     if data.y_std is not None:
-        train_kwargs.update({'y_std': data.y_std[test_idx]})
+        test_kwargs.update({'y_std': data.y_std[test_idx]})
 
     # Encapsulate into named tuples objects
     train_data = Data(**train_kwargs)
