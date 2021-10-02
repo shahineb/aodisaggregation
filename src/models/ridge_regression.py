@@ -36,7 +36,7 @@ class AggregateRidgeRegression(nn.Module):
         d = individuals_covariates.size(-1)
 
         aggX = self.aggregate_fn(individuals_covariates).t()
-        Q = aggX @ aggX.t() + n_bags * self.lbda * torch.eye(d)
+        Q = aggX @ aggX.t() + n_bags * self.lbda * torch.eye(d, device=aggX.device)
 
         beta = gpytorch.inv_matmul(Q, aggX @ aggregate_targets)
         self.register_buffer('beta', beta)
@@ -103,13 +103,13 @@ class TwoStageAggregateRidgeRegression(nn.Module):
         d_3d = individuals_covariates.size(-1)
 
         # Compute first regression stage
-        Q_2d = (bags_covariates.t() @ bags_covariates + n_bags * self.lbda_2d * torch.eye(d_2d))
+        Q_2d = (bags_covariates.t() @ bags_covariates + n_bags * self.lbda_2d * torch.eye(d_2d, device=bags_covariates.device))
         aggX = self.aggregate_fn(individuals_covariates)
         upsilon = gpytorch.inv_matmul(Q_2d, bags_covariates.t() @ aggX)
         y_upsilon = bags_covariates @ upsilon
 
         # Compute second regression stage
-        Q_3d = (y_upsilon.t() @ y_upsilon + n_bags * self.lbda_3d * torch.eye(d_3d))
+        Q_3d = (y_upsilon.t() @ y_upsilon + n_bags * self.lbda_3d * torch.eye(d_3d, device=bags_covariates.device))
         beta = gpytorch.inv_matmul(Q_3d, y_upsilon.t() @ aggregate_targets)
         self.register_buffer('beta', beta)
 
@@ -253,7 +253,7 @@ class WarpedTwoStageAggregateRidgeRegression(nn.Module):
         aggregated_prediction = self.aggregate_fn(prediction).squeeze()
 
         # Fit first regression stage against aggregated predictions
-        Q_2d = (bags_covariates.t() @ bags_covariates + n_bags * self.lbda_2d * torch.eye(d_2d))
+        Q_2d = (bags_covariates.t() @ bags_covariates + n_bags * self.lbda_2d * torch.eye(d_2d, device=bags_covariates.device))
         upsilon = gpytorch.inv_matmul(Q_2d, bags_covariates.t() @ aggregated_prediction)
 
         # Predict out of first regression stage

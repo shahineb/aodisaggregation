@@ -6,6 +6,7 @@ Usage: run_warped_two_stage_ridge_regression.py  [options] --cfg=<path_to_config
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
   --o=<output_dir>                 Output directory.
+  --device=<device_index>          Device to use [default: cpu]
   --plot                           Outputs plots.
 """
 import os
@@ -24,6 +25,9 @@ def main(args, cfg):
     logging.info("Loading dataset")
     data = make_data(cfg=cfg, include_2d=True)
 
+    # Move needed tensors only to device
+    data = migrate_to_device(data=data, device=device)
+
     # Instantiate model
     model = make_model(cfg=cfg, data=data)
     logging.info(f"{model}")
@@ -39,10 +43,19 @@ def main(args, cfg):
     evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
+def migrate_to_device(data, device):
+    # These are the only tensors needed on device to run this experiment
+    data = data._replace(x_std=data.x_std.to(device),
+                         y_std=data.y_std.to(device),
+                         z=data.z.to(device),
+                         h_by_column=data.h_by_column.to(device))
+    return data
+
+
 def make_model(cfg, data):
     # Create aggregation operator
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
     # Define warping transformation
@@ -70,7 +83,7 @@ def make_model(cfg, data):
                                                    ndim=len(cfg['dataset']['3d_covariates']) + 4,
                                                    fit_intercept_2d=cfg['model']['fit_intercept_2d'],
                                                    fit_intercept_3d=cfg['model']['fit_intercept_3d'])
-    return model
+    return model.to(device)
 
 
 def fit(model, data, cfg):
@@ -87,7 +100,7 @@ def fit(model, data, cfg):
 
         # Compute prediction
         prediction = model(data.x_std)
-        prediction_3d = prediction.reshape(*data.x_by_column_std.shape[:-1])
+        prediction_3d = prediction.reshape(*data.h_by_column.shape)
         aggregate_prediction_2d = model.aggregate_prediction(prediction_3d.unsqueeze(-1), data.y_std)
 
         # Compute loss
@@ -110,29 +123,30 @@ def predict(model, data):
         # Predict on standardized 3D covariates
         prediction = model(data.x_std)
 
-        # Reshape as (time, lat, lon, lev) grid
-        prediction_3d = prediction.reshape(*data.gt_grid.shape)
+        # Reshape as (time * lat * lon, lev) grid
+        prediction_3d = prediction.reshape(*data.h_by_column.shape)
     return prediction_3d
 
 
 def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
         return aggregated_grid
 
     # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d,
-                groundtruth_3d=data.gt_grid,
-                targets_2d=data.z_grid,
+    dump_scores(prediction_3d=prediction_3d.cpu(),
+                groundtruth_3d=data.gt_by_column,
+                targets_2d=data.z,
                 aggregate_fn=trpz,
                 output_dir=output_dir)
+    logging.info("Dumped scores")
 
     # Dump plots in output dir
     if plot:
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
-                   prediction_3d=prediction_3d,
+                   prediction_3d=prediction_3d.cpu(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
@@ -159,6 +173,12 @@ if __name__ == "__main__":
     os.makedirs(args['--o'], exist_ok=True)
     with open(os.path.join(args['--o'], 'cfg.yaml'), 'w') as f:
         yaml.dump(cfg, f)
+
+    # Setup global variable for device
+    if torch.cuda.is_available() and args['--device'].isdigit():
+        device = torch.device(f"cuda:{args['--device']}")
+    else:
+        device = torch.device('cpu')
 
     # Run session
     main(args, cfg)

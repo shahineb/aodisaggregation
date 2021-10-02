@@ -48,20 +48,17 @@ class AggregateKernelRidgeRegression(nn.Module):
         n_bags = individuals_covariates.size(0)
         d = individuals_covariates.size(-1)
 
-        # Register training samples for prediction later
-        self.register_buffer('training_covariates', individuals_covariates)
-
         # Sample random fourier features weights
         self.kernel._init_weights(d, self.kernel.num_samples)
 
         # Compute random fourier features - Shape = (n_bags, bags_size, self.kernel.num_samples)
-        Z = self.kernel._featurize(self.training_covariates, normalize=True)
+        Z = self.kernel._featurize(individuals_covariates, normalize=True)
 
         # Aggregate random fourier features - Shape = (self.kernel.num_samples, n_bags)
         aggZ = self.aggregate_fn(Z).t()
 
         # Compute kernel ridge regression solution - Shape = (self.kernel.num_samples,)
-        Q = aggZ @ aggZ.t() + n_bags * self.lbda * torch.eye(2 * self.kernel.num_samples)
+        Q = aggZ @ aggZ.t() + n_bags * self.lbda * torch.eye(2 * self.kernel.num_samples, device=aggZ.device)
         beta_rff = gpytorch.inv_matmul(Q, aggZ @ aggregate_targets)
         self.register_buffer('beta_rff', beta_rff)
 
@@ -130,13 +127,13 @@ class TwoStageAggregateKernelRidgeRegression(nn.Module):
         Z_3d = self.kernel_3d._featurize(individuals_covariates, normalize=True)  # (n_bags, bags_size, self.kernel_3d.num_samples)
 
         # Fit first regression stage
-        Q_2d = (Z_2d.t() @ Z_2d + n_bags * self.lbda_2d * torch.eye(2 * self.kernel_2d.num_samples))  # (self.kernel_2d.num_samples, self.kernel_2d.num_samples)
+        Q_2d = (Z_2d.t() @ Z_2d + n_bags * self.lbda_2d * torch.eye(2 * self.kernel_2d.num_samples, device=Z_2d.device))  # (self.kernel_2d.num_samples, self.kernel_2d.num_samples)
         aggZ_3d = self.aggregate_fn(Z_3d)  # (n_bags, self.kernel_3d.num_samples)
         upsilon = gpytorch.inv_matmul(Q_2d, Z_2d.t() @ aggZ_3d)  # (self.kernel_2d.num_samples, self.kernel_3d.num_samples)
         y_upsilon = Z_2d @ upsilon  # (n_bags, self.kernel_3d.num_samples)
 
         # Fit second regression stage
-        Q_3d = (y_upsilon.t() @ y_upsilon + n_bags * self.lbda_3d * torch.eye(2 * self.kernel_3d.num_samples))  # (self.kernel_3d.num_samples, self.kernel_3d.num_samples)
+        Q_3d = (y_upsilon.t() @ y_upsilon + n_bags * self.lbda_3d * torch.eye(2 * self.kernel_3d.num_samples, device=y_upsilon.device))  # (self.kernel_3d.num_samples, self.kernel_3d.num_samples)
         beta_rff = gpytorch.inv_matmul(Q_3d, y_upsilon.t() @ aggregate_targets)  # (self.kernel_3d.num_samples)
         self.register_buffer('beta_rff', beta_rff)
 
@@ -291,7 +288,7 @@ class WarpedTwoStageAggregateKernelRidgeRegression(nn.Module):
 
         # Fit first regression stage
         Z_2d = self.rff_training_features_2d  # (n_bags, R_2d)
-        Q_2d = (Z_2d.t() @ Z_2d + n_bags * self.lbda_2d * torch.eye(2 * self.kernel_2d.num_samples))  # (R_2d, R_2d)
+        Q_2d = (Z_2d.t() @ Z_2d + n_bags * self.lbda_2d * torch.eye(2 * self.kernel_2d.num_samples, device=Z_2d.device))  # (R_2d, R_2d)
         aggregated_prediction = self.aggregate_fn(prediction).squeeze()  # (n_bags,)
         upsilon = gpytorch.inv_matmul(Q_2d, Z_2d.t() @ aggregated_prediction)  # (R_2d,)
 

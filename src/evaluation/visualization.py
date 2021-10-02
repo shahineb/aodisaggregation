@@ -90,25 +90,25 @@ def plot_3d_covariates_slices(dataset, lat_idx, time_idx, covariates_keys):
     return fig, ax
 
 
-def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d, aggregate_fn):
+def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d_grid, aggregate_fn):
     """Plots aggregation of 3D+t prediction, 2D+t aggregate targets used for training and difference
 
     Args:
         dataset (xr.Dataset): source dataset
         target_key (str): name of target variable
-        prediction_3d (torch.Tensor): (time, lat, lon, lev)
+        prediction_3d_grid (torch.Tensor): (time, lat, lon, lev)
         aggregate_fn (callable): callable used to aggregate (time, lat, lon, lev, -1) -> (time, lat, lon)
 
     Returns:
         type: matplotlib.figure.Figure, numpy.ndarray
 
     """
-    n_row = prediction_3d.size(0)
-    n_col = prediction_3d.size(0) * prediction_3d.size(1) * prediction_3d.size(2)
-    prediction_3d_grid = prediction_3d.reshape(n_col, -1)
+    n_row = prediction_3d_grid.size(0)
+    n_col = prediction_3d_grid.size(0) * prediction_3d_grid.size(1) * prediction_3d_grid.size(2)
+    prediction_3d = prediction_3d_grid.reshape(n_col, -1)
 
-    aggregate_prediction_2d = aggregate_fn(prediction_3d_grid.unsqueeze(-1)).squeeze()
-    aggregate_prediction_2d = aggregate_prediction_2d.reshape(n_row, prediction_3d.size(1), prediction_3d.size(2))
+    aggregate_prediction_2d = aggregate_fn(prediction_3d.unsqueeze(-1)).squeeze()
+    aggregate_prediction_2d = aggregate_prediction_2d.reshape(n_row, prediction_3d_grid.size(1), prediction_3d_grid.size(2))
 
     fig, ax = plt.subplots(n_row, 3, figsize=(5 * n_row, 5 * n_row))
     cmap = 'magma'
@@ -146,7 +146,7 @@ def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d, aggregate_
     return fig, ax
 
 
-def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, prediction_3d):
+def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, prediction_3d_grid):
     """Plots lon/alt slice of 3D prediction next to groundtruth, difference and RMSE as a function of height
 
     Args:
@@ -154,7 +154,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
         lat_idx (int): index of latitude to use for slice
         time_idx (int): index of time to use for slice
         groundtruth_key (str): name of groundtruth variable
-        prediction_3d (torch.Tensor): (time, lat, lon, lev)
+        prediction_3d_grid (torch.Tensor): (time, lat, lon, lev)
 
     Returns:
         type: matplotlib.figure.Figure, numpy.ndarray
@@ -164,7 +164,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
     h = dataset.isel(lat=lat_idx, time=time_idx, lon=0).grheightm1.values
     lon = dataset.lon.values
 
-    predicted_slice = prediction_3d[time_idx, lat_idx]
+    predicted_slice = prediction_3d_grid[time_idx, lat_idx]
     groundtruth_slice = dataset.isel(lat=lat_idx, time=time_idx)[groundtruth_key].values.T
 
     difference = groundtruth_slice - predicted_slice.numpy()
