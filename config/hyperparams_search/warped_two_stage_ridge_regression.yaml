@@ -1,5 +1,5 @@
 ################################################################################
-#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH TWO-STAGE AGGREGATE RIDGE REGRESSION
+#   CONFIGURATIONS FOR HYPERPARAMETERS TUNING WITH WARPED TWO-STAGE AGGREGATE RIDGE REGRESSION
 ################################################################################
 
 # DATASET

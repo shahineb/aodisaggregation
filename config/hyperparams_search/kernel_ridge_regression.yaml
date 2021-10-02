@@ -1,5 +1,5 @@
 ################################################################################
-#   CONFIGURATIONS FOR HYPERPARAMETERS TUNING WITH WARPED AGGREGATE RIDGE REGRESSION
+#   CONFIGURATIONS FOR HYPERPARAMETERS TUNING WITH AGGREGATE KERNEL RIDGE REGRESSION
 ################################################################################
 
 # DATASET
@@ -19,22 +19,16 @@ dataset:
   groundtruth: ALFA_AER_533nm
 
 
-
 # MODEL SPECIFICATIONS
 model:
-  # Weights initialization seed
+  # Matern kernel parameter
+  nu: 1.5
+
+  # Number of random fourier features samples
+  num_samples: 500
+
+  # RFF sampling seed
   seed: 42
-
-
-
-# TRAINING
-training:
-  # Number of training epochs
-  n_epochs: 5
-
-  # Learning rate
-  lr: 0.1
-
 
 
 # GRID SEARCH
@@ -48,18 +42,12 @@ search:
     lbda:
       - 0.1
       - 1
+
+    # Kernel lengthscale
+    lengthscale:
+      - 1
       - 10
 
-    # Whether to use bias or not
-    fit_intercept:
-      - True
-      - False
-
-    # Warping transformation
-    transform:
-      - 'exp'
-      - 'square'
-      - 'smooth_abs'
 
 # EVALUATION
 evaluation:
