@@ -115,7 +115,7 @@ def fit(model, data, cfg):
         bar.suffix = f"Loss {loss.item():e}"
         bar.next()
 
-    return model.to(device)
+    return model
 
 
 def predict(model, data):
