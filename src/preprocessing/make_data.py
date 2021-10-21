@@ -106,7 +106,7 @@ def split_data(data, train_idx, test_idx):
     """
     # Make training tensors
     train_kwargs = {'x_by_column_std': data.x_by_column_std[train_idx],
-                    'x_std': data.x_by_column_std[train_idx].view(-1, data.x_std.size(-1)),
+                    'x_std': data.x_by_column_std[train_idx].view(-1, data.x_std.size(-1)).to(data.x_std.device),
                     'z': data.z[train_idx],
                     'z_std': data.z_std[train_idx],
                     'gt_by_column': data.gt_by_column[train_idx],
@@ -117,7 +117,7 @@ def split_data(data, train_idx, test_idx):
 
     # Make testing tensors
     test_kwargs = {'x_by_column_std': data.x_by_column_std[test_idx],
-                   'x_std': data.x_by_column_std[test_idx].view(-1, data.x_std.size(-1)),
+                   'x_std': data.x_by_column_std[test_idx].view(-1, data.x_std.size(-1)).to(data.x_std.device),
                    'z': data.z[test_idx],
                    'z_std': data.z_std[test_idx],
                    'gt_by_column': data.gt_by_column[test_idx],

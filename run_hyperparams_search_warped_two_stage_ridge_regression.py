@@ -120,13 +120,13 @@ def evaluate(prediction_3d, data, output_dir):
 
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
         return aggregated_grid
 
     # Dump scores in output dir
     dump_scores(prediction_3d=prediction_3d.cpu(),
                 groundtruth_3d=data.gt_by_column,
-                targets_2d=data.z,
+                targets_2d=data.z.cpu(),
                 aggregate_fn=trpz,
                 output_dir=output_dir)
 
