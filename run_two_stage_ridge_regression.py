@@ -36,7 +36,7 @@ def main(args, cfg):
     logging.info("Fitted model")
 
     # Run prediction
-    prediction_3d = predict(model=model, data=data)
+    prediction_3d = predict(model=model, data=data, device=device)
 
     # Run evaluation
     evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, output_dir=args['--o'], plot=args['--plot'])
