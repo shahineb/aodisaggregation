@@ -60,7 +60,7 @@ def plot_3d_covariates_slices(dataset, lat_idx, time_idx, covariates_keys):
 
     """
     slice_set = dataset.isel(lat=lat_idx, time=time_idx)
-    h = slice_set.isel(lon=len(slice_set.lon) // 2).grheightm1.values
+    h = slice_set.isel(lon=len(slice_set.lon) // 2).height.values
     lon = dataset.lon.values
 
     nrows = len(covariates_keys)
@@ -161,7 +161,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
 
     """
 
-    h = dataset.isel(lat=lat_idx, time=time_idx, lon=0).grheightm1.values
+    h = dataset.isel(lat=lat_idx, time=time_idx, lon=0).height.values
     lon = dataset.lon.values
 
     predicted_slice = prediction_3d_grid[time_idx, lat_idx]
