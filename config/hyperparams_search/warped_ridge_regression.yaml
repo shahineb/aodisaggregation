@@ -5,15 +5,15 @@
 # DATASET
 dataset:
   # Path to main model data .nc file
-  path: data/all_aod_global_updated_ds_06_06_2008.nc
+  path: data/aodisaggregation_emmisions_test_6.3_ACCMIP_200806.06_echam.nc
 
   # Variables to use as 3D covariates
   3d_covariates:
-    - ATTBETA_TOT_SPACE_533nm
+    - pressure
     - relhum
 
   # Variable to use as 2D aggregate target
-  target: ALFA_AER_533nm_2D
+  target: TAU_2D_550nm
 
   # Variable corresponding to unobserved groundtruth 3D field
   groundtruth: ALFA_AER_533nm
@@ -30,7 +30,7 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 5
+  n_epochs: 15000
 
   # Learning rate
   lr: 0.1
@@ -46,7 +46,9 @@ search:
   grid:
     # L2 regularization weight
     lbda:
-      - 0.1
+      - 0.0001
+      - 0.001
+      - 0.01
       - 1
       - 10
 
@@ -57,7 +59,6 @@ search:
 
     # Warping transformation
     transform:
-      - 'exp'
       - 'square'
       - 'smooth_abs'
 
