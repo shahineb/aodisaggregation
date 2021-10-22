@@ -26,10 +26,10 @@ model:
   lbda: 0.001
 
   # Whether to use bias or not
-  fit_intercept: False
+  fit_intercept: True
 
   # Warping transformation
-  transform: 'square'
+  transform: 'smooth_abs'
 
   # Weights initialization seed
   seed: 42
@@ -39,7 +39,7 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 15000
+  n_epochs: 25000
 
   # Learning rate
   lr: 0.1

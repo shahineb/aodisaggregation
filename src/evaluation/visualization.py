@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 params = {
     'text.latex.preamble': ['\\usepackage{gensymb}'],
-    'text.usetex': True,
+    'text.usetex': False,
     'font.family': 'serif',
 }
 matplotlib.rcParams.update(params)

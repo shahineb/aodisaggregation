@@ -74,16 +74,17 @@ def open_scores_as_xarray(dirpath, cfg):
 
             # Load corresponding scores
             scores_path = os.path.join(fold_dirpath, 'scores.metrics')
-            with open(scores_path, "r") as f:
-                scores = flatten_dict(yaml.safe_load(f))
+            if os.path.isfile(scores_path):
+                with open(scores_path, "r") as f:
+                    scores = flatten_dict(yaml.safe_load(f))
 
-            # Initialize metrics dataarrays in scores dataset
-            if not scores_dataset.data_vars.variables:
-                scores_dataset = init_metrics_dataarrays(scores_dataset=scores_dataset, metrics=list(scores.keys()))
+                # Initialize metrics dataarrays in scores dataset
+                if not scores_dataset.data_vars.variables:
+                    scores_dataset = init_metrics_dataarrays(scores_dataset=scores_dataset, metrics=list(scores.keys()))
 
-            # Record in dataset the value of each metric
-            for metric, value in scores.items():
-                scores_dataset[metric].loc[hyperparams_and_fold] = value
+                # Record in dataset the value of each metric
+                for metric, value in scores.items():
+                    scores_dataset[metric].loc[hyperparams_and_fold] = value
     return scores_dataset
 
 
@@ -118,7 +119,8 @@ def init_metrics_dataarrays(scores_dataset, metrics):
     dims = list(scores_dataset.dims.keys())
     shape = list(scores_dataset.dims.values())
     for metric in metrics:
-        scores_dataset[metric] = (dims, np.empty(shape))
+        scores_dataset[metric] = (dims, np.full(shape, fill_value=np.nan))
+    scores_dataset = scores_dataset.assign_attrs(fill_value=np.nan)
     return scores_dataset
 
 
@@ -159,8 +161,8 @@ def extract_best_hyperparams(scores_dataset, k):
 
     """
     # Take mean and standard deviation of metrics accross folds
-    mean_scores = scores_dataset.mean(dim='fold')
-    std_scores = scores_dataset.std(dim='fold')
+    mean_scores = scores_dataset.mean(dim='fold', skipna=True)
+    std_scores = scores_dataset.std(dim='fold', skipna=True)
 
     # Initialize emtpy output dictionnary
     output_dict = dict()
