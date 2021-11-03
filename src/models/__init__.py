@@ -1,7 +1,7 @@
 from .ridge_regression import AggregateRidgeRegression, TwoStageAggregateRidgeRegression, WarpedAggregateRidgeRegression, WarpedTwoStageAggregateRidgeRegression
-from .beta_regression import AggregateBetaRegression
 from .kernel_ridge_regression import AggregateKernelRidgeRegression, TwoStageAggregateKernelRidgeRegression, WarpedAggregateKernelRidgeRegression, WarpedTwoStageAggregateKernelRidgeRegression
+from .gamma_regression import AggregateGammaRegression
 
 __all__ = ['AggregateRidgeRegression', 'TwoStageAggregateRidgeRegression', 'WarpedAggregateRidgeRegression', 'WarpedTwoStageAggregateRidgeRegression',
-           'AggregateBetaRegression',
+           'AggregateGammaRegression',
            'AggregateKernelRidgeRegression', 'TwoStageAggregateKernelRidgeRegression', 'WarpedAggregateKernelRidgeRegression', 'WarpedTwoStageAggregateKernelRidgeRegression']

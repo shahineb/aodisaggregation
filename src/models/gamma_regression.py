@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
-from torch.distributions.beta import Beta
+from torch.distributions.gamma import Gamma
 
 
-class AggregateBetaRegression(nn.Module):
-    """Beta regression model on aggregated targets - regresses mean only and
-    considers fixed precision accross samples
+class AggregateGammaRegression(nn.Module):
+    """Gamma regression model on aggregated targets - uses GLM reparametrization
+    and regresses mean only
 
     Args:
-        transform (callable): link function to apply to prediction
+        transform (callable): positive link function to apply to prediction
         aggregate_fn (callable): aggregation operator
         ndim (int): dimensionality of input samples
         fit_intercept (bool): if True, fits a constant offset term
@@ -16,29 +16,40 @@ class AggregateBetaRegression(nn.Module):
     """
     def __init__(self, transform, aggregate_fn, ndim, fit_intercept=False):
         super().__init__()
-        self.raw_sigma2 = nn.Parameter(torch.zeros(1))
+        self.raw_scale = nn.Parameter(torch.zeros(1))
         self.transform = transform
         self.aggregate_fn = aggregate_fn
         self.fit_intercept = fit_intercept
         self.ndim = ndim
         if self.fit_intercept:
             self.bias = nn.Parameter(torch.zeros(1))
-        self.weights = nn.Parameter(torch.randn(self.ndim))
+        self.weights = nn.Parameter(torch.zeros(self.ndim))
 
     @property
-    def sigma2(self):
-        return torch.log(1 + torch.exp(self.raw_sigma2))
+    def scale(self):
+        return torch.log(1 + torch.exp(self.raw_scale))
 
-    @property
-    def precision(self):
-        precision = 1 / self.sigma2
-        return precision
+    def reparametrize(self, mu):
+        """Computes gamma distribution concentrations (i.e. αi and βi) out of
+        mean values μi and shared precision Φ
 
-    def compute_concentrations(self, mu):
-        precision = 1 / torch.square(self.sigma)
-        alpha = ((1 - mu) * precision - 1 / mu) * torch.square(mu)
-        beta = alpha * (1 / mu - 1)
+        Args:
+            mu (torch.tensor): (n_samples,) tensor of means of each sample
+
+        Returns:
+            type: torch.Tensor, torch.Tensor
+
+        """
+        alpha = self.scale
+        beta = self.scale / mu
         return alpha, beta
+
+    def predict_mean(self, x):
+        f = x @ self.weights
+        if self.fit_intercept:
+            f = f + self.bias
+        mu = self.transform(f)
+        return mu
 
     def forward(self, x):
         """Runs prediction.
@@ -49,12 +60,9 @@ class AggregateBetaRegression(nn.Module):
         Returns:
             type: torch.Tensor
         """
-        f = x @ self.beta
-        if self.fit_intercept:
-            f = f + self.bias
-        transformed_f = self.transform(f)
-        alpha, beta = self.compute_concentrations(mu=transformed_f)
-        output = Beta(concentration1=alpha, concentration2=beta)
+        mu = self.predict_mean(x)
+        alpha, beta = self.reparametrize(mu=mu)
+        output = Gamma(concentration=alpha, rate=beta)
         return output
 
     def aggregate_prediction(self, prediction):

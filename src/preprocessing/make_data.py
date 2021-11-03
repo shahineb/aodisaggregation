@@ -25,6 +25,7 @@ from .tensors import make_3d_covariates_tensors, make_2d_covariates_tensors, mak
 field_names = ['dataset',
                'standard_dataset',
                'x_by_column_std',
+               'x',
                'x_std',
                'y_std',
                'z',
@@ -60,7 +61,7 @@ def make_data(cfg, include_2d=False):
     standard_dataset = standardize(dataset)
 
     # Make 3D covariate tensors
-    x_grid_std, x_by_column_std, x_std = _make_x_tensors(cfg, dataset, standard_dataset)
+    x_grid_std, x_by_column_std, x_std, x = _make_x_tensors(cfg, dataset, standard_dataset)
 
     # Make 2D covariate tensors
     if include_2d:
@@ -79,6 +80,7 @@ def make_data(cfg, include_2d=False):
     kwargs = {'dataset': dataset,
               'standard_dataset': standard_dataset,
               'x_by_column_std': x_by_column_std,
+              'x': x,
               'x_std': x_std,
               'z': z,
               'z_std': z_std,
@@ -153,11 +155,13 @@ def _make_x_tensors(cfg, dataset, standard_dataset):
     """
     # Convert into pytorch tensors
     x_grid_std = make_3d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['3d_covariates'])
+    x_grid = make_3d_covariates_tensors(dataset=dataset, variables_keys=cfg['dataset']['3d_covariates'])
 
     # Reshape tensors
     x_by_column_std = x_grid_std.reshape(-1, x_grid_std.size(-2), x_grid_std.size(-1))
     x_std = x_by_column_std.view(-1, x_grid_std.size(-1))
-    return x_grid_std, x_by_column_std, x_std
+    x = x_grid.reshape(-1, x_grid.size(-1))
+    return x_grid_std, x_by_column_std, x_std, x
 
 
 def _make_y_tensors(cfg, dataset, standard_dataset):
