@@ -1,7 +1,7 @@
 """
-Description : Runs two-stage ridge regression experiment
+Description : Runs logwarped ridge regression experiment
 
-Usage: run_two_stage_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_warped_ridge_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -13,16 +13,17 @@ import os
 import yaml
 import logging
 from docopt import docopt
+from progress.bar import Bar
 import torch
 from src.preprocessing import make_data
-from src.models import TwoStageAggregateRidgeRegression
+from src.models import WarpedAggregateRidgeRegression
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
 
 
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
-    data = make_data(cfg=cfg, include_2d=True)
+    data = make_data(cfg=cfg, include_2d=False)
 
     # Move needed tensors only to device
     data = migrate_to_device(data=data, device=device)
@@ -32,64 +33,102 @@ def main(args, cfg):
     logging.info(f"{model}")
 
     # Fit model
-    model = fit(model=model, data=data)
+    model = fit(model=model, data=data, cfg=cfg)
     logging.info("Fitted model")
 
     # Run prediction
-    prediction_3d = predict(model=model, data=data, device=device)
+    prediction_3d = predict(model=model, data=data)
 
     # Run evaluation
-    evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, output_dir=args['--o'], plot=args['--plot'])
+    evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
-    data = data._replace(x_by_column_std=data.x_by_column_std.to(device),
-                         x_std=data.x_std.to(device),
-                         y_std=data.y_std.to(device),
-                         z_std=data.z_std.to(device),
-                         h_by_column_std=data.h_by_column_std.to(device))
+    data = data._replace(x_std=data.x_std.to(device),
+                         z=data.z.to(device),
+                         h_by_column=data.h_by_column.to(device))
     return data
 
 
 def make_model(cfg, data):
     # Create aggregation operator
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column_std.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
+    # Define warping transformation
+    if cfg['model']['transform'] == 'linear':
+        transform = lambda x: x
+    elif cfg['model']['transform'] == 'softplus':
+        transform = lambda x: torch.log(1 + torch.exp(x))
+    elif cfg['model']['transform'] == 'smooth_abs':
+        transform = lambda x: torch.nn.functional.smooth_l1_loss(x, torch.zeros_like(x), reduction='none')
+    elif cfg['model']['transform'] == 'square':
+        transform = torch.square
+    elif cfg['model']['transform'] == 'exp':
+        transform = torch.exp
+    else:
+        raise ValueError("Unknown transform")
+
+    # Fix weights initialization seed
+    torch.random.manual_seed(cfg['model']['seed'])
+
     # Instantiate model
-    model = TwoStageAggregateRidgeRegression(lbda_2d=cfg['model']['lbda_2d'],
-                                             lbda_3d=cfg['model']['lbda_3d'],
-                                             aggregate_fn=trpz,
-                                             fit_intercept_2d=cfg['model']['fit_intercept_2d'],
-                                             fit_intercept_3d=cfg['model']['fit_intercept_3d'])
+    model = WarpedAggregateRidgeRegression(lbda=cfg['model']['lbda'],
+                                           transform=transform,
+                                           aggregate_fn=trpz,
+                                           ndim=len(cfg['dataset']['3d_covariates']) + 4,
+                                           fit_intercept=cfg['model']['fit_intercept'])
     return model.to(device)
 
 
-def fit(model, data):
-    model.fit(data.x_by_column_std, data.y_std, data.z_std)
+def fit(model, data, cfg):
+    # Define optimizer and exact loglikelihood module
+    optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
+
+    # Initialize progress bar
+    n_epochs = cfg['training']['n_epochs']
+    bar = Bar("Epoch", max=n_epochs)
+
+    for epoch in range(n_epochs):
+        # Zero-out remaining gradients
+        optimizer.zero_grad()
+
+        # Compute prediction
+        prediction = model(data.x_std)
+        prediction_3d = prediction.reshape(*data.h_by_column.shape)
+        aggregate_prediction_2d = model.aggregate_prediction(prediction_3d.unsqueeze(-1)).squeeze()
+
+        # Compute loss
+        loss = torch.square(aggregate_prediction_2d - data.z).mean()
+        loss += model.regularization_term()
+
+        # Take gradient step
+        loss.backward()
+        optimizer.step()
+
+        # Update progress bar
+        bar.suffix = f"Loss {loss.item():e}"
+        bar.next()
+
     return model
 
 
-def predict(model, data, device):
+def predict(model, data):
     with torch.no_grad():
         # Predict on standardized 3D covariates
         prediction = model(data.x_std)
 
         # Reshape as (time * lat * lon, lev) grid
-        prediction_3d_std = prediction.reshape(*data.h_by_column.shape)
-
-        # Unnormalize with mean and variance of observed aggregte targets – because groundtruth 3D field is unobserved
-        mean_z, sigma_z, sigma_h = data.z.mean().to(device), data.z.std().to(device), data.h_by_column.std().to(device)
-        prediction_3d = sigma_z * (prediction_3d_std + mean_z) / sigma_h
+        prediction_3d = prediction.reshape(*data.h_by_column.shape)
     return prediction_3d
 
 
 def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
+        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
         return aggregated_grid
 
     # Dump scores in output dir

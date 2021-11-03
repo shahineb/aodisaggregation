@@ -14,6 +14,7 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
+from gpytorch.utils.errors import NotPSDError
 from sklearn.model_selection import KFold
 from src.preprocessing import make_data, split_data
 from src.models import TwoStageAggregateRidgeRegression
@@ -54,25 +55,27 @@ def main(args, cfg):
 
         # Iterate over folds
         for i, (train_idx, test_idx) in enumerate(kfold.split(data.x_by_column_std)):
+            try:
+                # Split training and testing data
+                train_data, test_data = split_data(data=data, train_idx=train_idx, test_idx=test_idx)
 
-            # Split training and testing data
-            train_data, test_data = split_data(data=data, train_idx=train_idx, test_idx=test_idx)
+                # Instantiate model with training data
+                model = make_model(cfg=cfg, data=train_data, hyperparams=hyperparams)
 
-            # Instantiate model with training data
-            model = make_model(cfg=cfg, data=train_data, hyperparams=hyperparams)
+                # Fit model on training data
+                model = fit(model=model, data=train_data)
 
-            # Fit model on training data
-            model = fit(model=model, data=train_data)
+                # Run prediction on testing data
+                prediction_3d = predict(model=model, data=test_data, device=device)
 
-            # Run prediction on testing data
-            prediction_3d = predict(model=model, data=test_data, device=device)
+                # Run evaluation
+                fold_output_dir = os.path.join(output_dir, f"fold_{i + 1}")
+                evaluate(prediction_3d=prediction_3d, data=test_data, output_dir=fold_output_dir)
 
-            # Run evaluation
-            fold_output_dir = os.path.join(output_dir, f"fold_{i + 1}")
-            evaluate(prediction_3d=prediction_3d, data=test_data, output_dir=fold_output_dir)
-
-            # Update progress bar
-            cv_bar.next()
+                # Update progress bar
+                cv_bar.next()
+            except NotPSDError:
+                continue
 
         # Update progress bar
         search_bar.suffix = f"{j + 1}/{n_grid_points} | {hyperparams}"
