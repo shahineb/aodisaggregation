@@ -110,14 +110,24 @@ def fit(model, data, cfg):
         aggregate_predicted_pi_2d = model.aggregate_prediction(predicted_pi_3d.unsqueeze(-1)).squeeze()
         aggregate_predicted_pi_2d.div_(data.h_by_column[:, 0])
 
-        # Compute loss
+        # Compute loss - independent version
+        # alpha, beta, pi = model.reparametrize(mu=aggregate_predicted_mean_2d, pi=aggregate_predicted_pi_2d)
+        # aggregate_prediction_2d = torch.distributions.gamma.Gamma(alpha, beta)
+        # log_prob_gamma = aggregate_prediction_2d.log_prob(data.z)
+        # bernoulli_1 = torch.log(pi) + log_prob_gamma
+        # bernoulli_0 = torch.log(1 - pi)
+        # log_prob = bernoulli_1.mul(data.pi) + bernoulli_0.mul(1 - data.pi)
+        # loss = -log_prob.sum()
+
+        # Mixture version
         alpha, beta, pi = model.reparametrize(mu=aggregate_predicted_mean_2d, pi=aggregate_predicted_pi_2d)
-        aggregate_prediction_2d = torch.distributions.gamma.Gamma(alpha, beta)
-        log_prob_gamma = aggregate_prediction_2d.log_prob(data.z)
-        bernoulli_1 = torch.log(pi) + log_prob_gamma
-        bernoulli_0 = torch.log(1 - pi)
-        log_prob = bernoulli_1.mul(data.pi) + bernoulli_0.mul(1 - data.pi)
-        loss = -log_prob.sum()
+        mask = data.pi.bool()
+        aggregate_prediction_2d_1 = torch.distributions.gamma.Gamma(alpha, beta.div(pi)[mask])
+        bernoulli_1 = aggregate_prediction_2d_1.log_prob(data.z[mask])
+        aggregate_prediction_2d_0 = torch.distributions.gamma.Gamma(alpha, beta.div(pi)[~mask])
+        bernoulli_0 = torch.log(aggregate_prediction_2d_0.log_prob(data.z[~mask]).exp() + (1 - pi[~mask]))
+        log_prob = bernoulli_1.sum() + bernoulli_0.sum()
+        loss = -log_prob
 
         # Take gradient step
         loss.backward()
