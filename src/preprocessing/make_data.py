@@ -32,7 +32,8 @@ field_names = ['dataset',
                'z_std',
                'gt_by_column',
                'h_by_column',
-               'h_by_column_std']
+               'h_by_column_std',
+               'pi']
 Data = namedtuple(typename='Data', field_names=field_names, defaults=(None,) * len(field_names))
 
 

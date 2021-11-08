@@ -42,14 +42,14 @@ def plot_2d_covariates(dataset, time_idx, covariates_keys):
     lat = dataset.lat.values
 
     nrows = len(covariates_keys)
-    fig, ax = plt.subplots(nrows, 1, figsize=(10, 5 * nrows))
+    fig, ax = plt.subplots(nrows, 1, figsize=(len(lon) // 4, 6 * nrows))
     cmap = 'magma'
     n_x_ticks = 10
     n_y_ticks = 10
-    title_fontsize = 20
-    labels_fontsize = 12
-    ticks_fontsize = 12
-    cbar_fontsize = 12
+    title_fontsize = 26
+    labels_fontsize = 18
+    cbar_fontsize = 18
+    ticks_fontsize = 14
 
     for i in range(nrows):
         key = covariates_keys[i]
