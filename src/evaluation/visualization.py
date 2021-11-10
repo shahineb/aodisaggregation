@@ -87,7 +87,7 @@ def plot_3d_covariates_slices(dataset, lat_idx, time_idx, covariates_keys):
 
     nrows = len(covariates_keys)
     fig, ax = plt.subplots(nrows, 1, figsize=(len(lon) // 4, 6 * nrows))
-    cmap = 'magma'
+    cmap = 'turbo'
     n_x_ticks = 10
     n_y_ticks = 4
     title_fontsize = 26
@@ -133,7 +133,7 @@ def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d_grid, aggre
     aggregate_prediction_2d = aggregate_prediction_2d.reshape(n_row, prediction_3d_grid.size(1), prediction_3d_grid.size(2))
 
     fig, ax = plt.subplots(n_row, 3, figsize=(5 * n_row, 5 * n_row))
-    cmap = 'magma'
+    cmap = 'turbo'
     title_fontsize = 16
     cbar_fontsize = 12
 
@@ -198,7 +198,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
     diffmax = np.abs(difference).max()
 
     fig, ax = plt.subplots(4, 1, figsize=(10, 18))
-    cmap = 'magma'
+    cmap = 'turbo'
     n_x_ticks = 10
     n_y_ticks = 4
     title_fontsize = 22

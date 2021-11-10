@@ -23,9 +23,6 @@ dataset:
 
 # MODEL SPECIFICATIONS
 model:
-  # L2 regularization weight
-  lbda: 0.001
-
   # Whether to use bias or not
   fit_intercept: True
 
@@ -40,10 +37,26 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 5000
+  n_epochs: 256
 
   # Learning rate
   lr: 0.1
+
+  # Random seed for MC sampling
+  seed: 42
+
+  # Number of MC samples
+  n_samples: 50
+
+
+
+# MAP estimation
+MAP:
+  # Number of training epochs
+  n_epochs: 128
+
+  # Learning rate
+  lr: 0.01
 
 
 
