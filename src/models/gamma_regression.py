@@ -100,6 +100,7 @@ class AggregateMAPGPGammaRegression(nn.Module):
         self.ndim = ndim
         if self.fit_intercept:
             self.bias = nn.Parameter(torch.zeros(1))
+            self.biasMAP = nn.Parameter(torch.zeros(1))
 
     @property
     def scale(self):
@@ -229,6 +230,83 @@ class AggregateBernoulliGammaRegression(nn.Module):
             prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
         Returns:
             type: torch.Tensor
+        """
+        aggregated_prediction = self.aggregate_fn(prediction)
+        return aggregated_prediction
+
+
+class AggregateMAPGPBernoulliGammaRegression(nn.Module):
+    """Gamma regression model on aggregated targets - uses GLM reparametrization
+    and regresses mean only
+
+    Args:
+        transform (callable): positive link function to apply to prediction
+        aggregate_fn (callable): aggregation operator
+        ndim (int): dimensionality of input samples
+        fit_intercept (bool): if True, fits a constant offset term
+
+    """
+    def __init__(self, x, transform, kernel_f, kernel_g, aggregate_fn, ndim, fit_intercept=False):
+        super().__init__()
+        self.fMAP = nn.Parameter(torch.zeros_like(x))
+        self.gMAP = nn.Parameter(torch.zeros_like(x))
+        self.raw_scale = nn.Parameter(torch.zeros(1))
+        self.transform = transform
+        self.kernel_f = kernel_f
+        self.kernel_g = kernel_g
+        self.aggregate_fn = aggregate_fn
+        self.fit_intercept = fit_intercept
+        self.ndim = ndim
+        if self.fit_intercept:
+            self.bias_f = nn.Parameter(torch.zeros(1))
+            self.bias_g = nn.Parameter(torch.zeros(1))
+            self.bias_fMAP = nn.Parameter(torch.zeros(1))
+            self.bias_gMAP = nn.Parameter(torch.zeros(1))
+
+    @property
+    def scale(self):
+        return torch.log(1 + torch.exp(self.raw_scale))
+
+    def reparametrize(self, mu, pi):
+        """Computes gamma distribution concentrations (i.e. βi) out of
+        mean values μi, shared precision α and bernoulli means πi
+
+        Args:
+            mu (torch.tensor): (n_samples,) tensor of means of each sample
+            pi (torch.tensor): (n_samples,) tensor of bernoulli mean of each sample
+
+        Returns:
+            type: torch.Tensor, torch.Tensor
+
+        """
+        alpha = self.scale
+        beta = alpha * pi.div(mu)
+        return alpha, beta, pi
+
+    def forward(self):
+        """Runs prediction.
+
+        Args:
+            x (torch.Tensor): (n_samples, ndim)
+                samples must not need to be organized by bags
+
+        Returns:
+            type: Bernoulli, Gamma
+        """
+        mu = self.transform(self.bias_f + self.fMAP)
+        pi = torch.sigmoid(self.bias_g + self.gMAP)
+        alpha, beta, pi = self.reparametrize(mu, pi)
+        bernoulli = Bernoulli(probs=pi)
+        gamma = Gamma(concentration=alpha, rate=beta)
+        return bernoulli, gamma
+
+    def aggregate_prediction(self, prediction):
+        """Computes aggregation of individuals output prediction.
+
+        Args:
+            prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
+        Returns:
+            type: Gamma
         """
         aggregated_prediction = self.aggregate_fn(prediction)
         return aggregated_prediction

@@ -9,9 +9,9 @@ dataset:
 
   # Variables to use as 3D covariates
   3d_covariates:
-    - pressure_as_normal
-    - relhum_as_normal
-    # - ALFA_AER_533nm_as_normal
+    # - pressure_as_normal
+    # - relhum_as_normal
+    - ALFA_AER_533nm_as_normal
 
   # Variable to use as 2D aggregate target
   target: TAU_2D_550nm
@@ -37,10 +37,10 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 4
+  n_epochs: 16
 
   # Learning rate
-  lr: 0.1
+  lr: 1
 
   # Random seed for MC sampling
   seed: 42
@@ -53,7 +53,7 @@ training:
 # MAP estimation
 MAP:
   # Number of training epochs
-  n_epochs: 16
+  n_epochs: 256
 
   # Learning rate
   lr: 1

@@ -1,7 +1,7 @@
 """
-Description : Runs gamma regression experiment
+Description : Runs bernoulli gamma MAP gp regression experiment
 
-Usage: run_gamma_map_gp_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_bernoulli_gamma_map_gp_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -15,16 +15,23 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
-from gpytorch import kernels, constraints
+from gpytorch import kernels
 from src.preprocessing import make_data
-from src.models import AggregateMAPGPGammaRegression
+from src.models import AggregateMAPGPBernoulliGammaRegression
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
+from src.preprocessing import make_2d_tensor, load_dataset
 
 
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
     data = make_data(cfg=cfg, include_2d=False)
+
+    # Add classification mask
+    dataset = load_dataset(cfg['dataset']['path'])
+    dataset = dataset.isel(lat=slice(30, 60), lon=slice(35, 55), time=slice(0, 3))
+    mask = make_2d_tensor(dataset=dataset, variable_key='TAU_2D_550nm_mask').view(-1)
+    data = data._replace(mask=mask)
 
     # Move needed tensors only to device
     data = migrate_to_device(data=data, device=device)
@@ -33,13 +40,13 @@ def main(args, cfg):
     model = make_model(cfg=cfg, data=data)
     logging.info(f"{model}")
 
-    # Fit model
-    logging.info("\n Fitting model")
-    model = fit(model=model, data=data, cfg=cfg)
+    # Fit classification model parameters
+    logging.info("\n Fitting classification model")
+    model = fitg(model=model, data=data, cfg=cfg)
 
-    # Fit MAP model
-    logging.info("\n Fitting MAP estimate")
-    model = fitMAP(model=model, data=data, cfg=cfg)
+    # Fit classification model MAP
+    logging.info("\n Fitting classification MAP estimate")
+    model = fitgMAP(model=model, data=data, cfg=cfg)
 
     # Run prediction
     prediction_3d = predict(model=model, data=data)
@@ -76,27 +83,28 @@ def make_model(cfg, data):
     else:
         raise ValueError("Unknown transform")
 
-    # Define kernel
-    height_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, active_dims=[1]),
-                                        outputscale_constraint=constraints.GreaterThan(10))
-    covariates_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[4, 5]),
-                                            outputscale_constraint=constraints.GreaterThan(10))
-    kernel = height_kernel + covariates_kernel
+    # Define kernels
+    covariates_kernel_f = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[4, 5]))
+    kernel_f = covariates_kernel_f
+
+    covariates_kernel_g = kernels.RBFKernel(active_dims=[4])
+    kernel_g = covariates_kernel_g
 
     # Fix weights initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Instantiate model
-    model = AggregateMAPGPGammaRegression(x=data.h_by_column,
-                                          transform=transform,
-                                          aggregate_fn=trpz,
-                                          kernel=kernel,
-                                          ndim=len(cfg['dataset']['3d_covariates']) + 4,
-                                          fit_intercept=cfg['model']['fit_intercept'])
-    return model.to(device)
+    model = AggregateMAPGPBernoulliGammaRegression(x=data.h_by_column,
+                                                   transform=transform,
+                                                   aggregate_fn=trpz,
+                                                   kernel_f=kernel_f,
+                                                   kernel_g=kernel_g,
+                                                   ndim=len(cfg['dataset']['3d_covariates']) + 4,
+                                                   fit_intercept=cfg['model']['fit_intercept'])
+    return model.train().to(device)
 
 
-def fit(model, data, cfg):
+def fitg(model, data, cfg):
     # Aggregation operator for MC approximation
     n_MC_samples = cfg['training']['n_samples']
 
@@ -106,7 +114,9 @@ def fit(model, data, cfg):
 
     # Define optimizer and exact loglikelihood module
     model.fMAP.requires_grad = False
-    model.biasMAP.requires_grad = False
+    model.gMAP.requires_grad = False
+    model.bias_fMAP.requires_grad = False
+    model.bias_gMAP.requires_grad = False
     optimizer = torch.optim.LBFGS(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Initialize progress bar
@@ -120,38 +130,34 @@ def fit(model, data, cfg):
             optimizer.zero_grad()
 
             # Draw multiple GP samples for each column and aggregate
-            K = model.kernel(data.x_by_column_std)
-            fs = K.zero_mean_mvn_samples(num_samples=n_MC_samples)
-            predicted_means = model.transform(model.bias + fs)
-            predicted_means_3d = predicted_means.reshape((n_MC_samples,) + data.h_by_column.shape)
-            aggregate_predicted_means_2d = trpz_MC(predicted_means_3d.unsqueeze(-1)).squeeze()
+            Kg = model.kernel_g(data.x_by_column_std).add_jitter(1e-6)
+            gs = Kg.zero_mean_mvn_samples(num_samples=n_MC_samples)
+            predicted_3d_pis = torch.sigmoid(gs)
+            pis = predicted_3d_pis.max(dim=-1).values
 
             # Reparametrize into gamma logprob
-            alpha, beta = model.reparametrize(mu=aggregate_predicted_means_2d)
-            aggregate_prediction_2d = torch.distributions.gamma.Gamma(alpha, beta)
-            prob_gamma = aggregate_prediction_2d.log_prob(data.z.tile((n_MC_samples, 1))).exp()
-            mc_log_prob_tau = torch.log(prob_gamma.mean(dim=0))
+            prob = pis * data.mask + (1 - pis) * (1 - data.mask)
+            mc_log_prob = torch.log(prob.mean(dim=0))
 
             # Take gradient step
-            loss = -mc_log_prob_tau.sum()
+            loss = -mc_log_prob.sum()
             loss.backward()
 
             # Update progress bar
             bar.suffix = f"Loss {loss.item():e}"
             return loss
-
         optimizer.step(closure)
         bar.next()
     return model
 
 
-def fitMAP(model, data, cfg):
-    # Define optimizer
+def fitgMAP(model, data, cfg):
+    # Define optimizer and exact loglikelihood module
     for p in model.parameters():
         p.requires_grad = False
-    model.fMAP.requires_grad = True
-    model.biasMAP.requires_grad = True
-    optimizer = torch.optim.LBFGS(params=[model.fMAP, model.biasMAP], lr=cfg['MAP']['lr'])
+    model.gMAP.requires_grad = True
+    model.bias_gMAP.requires_grad = True
+    optimizer = torch.optim.LBFGS(params=[model.gMAP], lr=cfg['MAP']['lr'])
 
     # Initialize progress bar
     n_epochs = cfg['MAP']['n_epochs']
@@ -163,37 +169,34 @@ def fitMAP(model, data, cfg):
             optimizer.zero_grad()
 
             # Compute prediction
-            predicted_mean = model.transform(model.biasMAP + model.fMAP)
-            predicted_mean_3d = predicted_mean.reshape(*data.h_by_column.shape)
-            aggregate_predicted_mean_2d = model.aggregate_prediction(predicted_mean_3d.unsqueeze(-1)).squeeze()
+            predicted_pi = torch.sigmoid(model.gMAP)
+            pi = predicted_pi.max(dim=-1).values
 
             # Compute gamma logprob
-            alpha, beta = model.reparametrize(mu=aggregate_predicted_mean_2d)
-            aggregate_prediction_2d = torch.distributions.gamma.Gamma(alpha, beta)
-            log_prob_gamma = aggregate_prediction_2d.log_prob(data.z).sum()
+            log_prob = torch.log(pi) * data.mask + torch.log(1 - pi) * (1 - data.mask)
+            log_prob_mask = log_prob.sum()
 
             # Compute prior logprob
-            K = model.kernel(data.x_by_column_std)
-            inv_quad = K.inv_quad(model.biasMAP + model.fMAP.unsqueeze(-1) - model.bias)
-            log_prob_prior = -0.5 * inv_quad.sum()
+            Kg = model.kernel_g(data.x_by_column_std)
+            inv_quad_g = Kg.inv_quad(model.gMAP.unsqueeze(-1))
+            log_prob_prior = -0.005 * inv_quad_g.sum()
 
             # Take gradient step
-            loss = -(log_prob_gamma + log_prob_prior)
+            loss = -log_prob_mask - log_prob_prior
             loss.backward()
 
             # Update progress bar
-            bar.suffix = f"log N(f|m,K) {log_prob_prior.item():e} | log Γ(τ|f) {log_prob_gamma.item():e}"
+            bar.suffix = f"log N(g|m,K) {log_prob_prior.item():e} | log Ber(mask|g) {log_prob_mask.item():e}"
             return loss
         optimizer.step(closure)
         bar.next()
-
     return model
 
 
 def predict(model, data):
     with torch.no_grad():
         # Predict on standardized 3D covariates
-        prediction = model.transform(model.biasMAP + model.fMAP).div(data.h_by_column.std())
+        prediction = torch.sigmoid(model.gMAP)
 
         # Reshape as (time * lat * lon, lev) grid
         prediction_3d = prediction.reshape(*data.h_by_column.shape)
@@ -203,7 +206,9 @@ def predict(model, data):
 def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
-        aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
+        # aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2).squeeze()
+        # aggregated_grid.div_(data.h_by_column_std[:, 0] - data.h_by_column_std[:, -1])
+        aggregated_grid = grid.max(dim=-2).values
         return aggregated_grid
 
     # Dump model weights in output dir
