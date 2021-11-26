@@ -21,6 +21,7 @@ def dump_plots(cfg, dataset, prediction_3d, aggregate_fn, output_dir):
     dump_path = os.path.join(output_dir, 'aggregated_2d_prediction.png')
     _ = visualization.plot_aggregate_2d_predictions(dataset=dataset,
                                                     target_key=cfg['dataset']['target'],
+                                                    # target_key='TAU_2D_550nm_mask',
                                                     prediction_3d_grid=prediction_3d_grid,
                                                     aggregate_fn=aggregate_fn)
     plt.savefig(dump_path)
