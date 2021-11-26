@@ -37,10 +37,10 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 4
+  n_epochs: 32
 
   # Learning rate
-  lr: 0.1
+  lr: 0.01
 
   # Random seed for MC sampling
   seed: 42
@@ -53,7 +53,7 @@ training:
 # MAP estimation
 MAP:
   # Number of training epochs
-  n_epochs: 16
+  n_epochs: 8
 
   # Learning rate
   lr: 1

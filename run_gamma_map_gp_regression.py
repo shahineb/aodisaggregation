@@ -124,6 +124,7 @@ def fit(model, data, cfg):
             fs = K.zero_mean_mvn_samples(num_samples=n_MC_samples)
             predicted_means = model.transform(model.bias + fs)
             predicted_means_3d = predicted_means.reshape((n_MC_samples,) + data.h_by_column.shape)
+            predicted_means_3d = predicted_means_3d.mul(torch.exp(-1.8 * data.h_by_column_std))
             aggregate_predicted_means_2d = trpz_MC(predicted_means_3d.unsqueeze(-1)).squeeze()
 
             # Reparametrize into gamma logprob
@@ -133,11 +134,12 @@ def fit(model, data, cfg):
             mc_log_prob_tau = torch.log(prob_gamma.mean(dim=0))
 
             # Take gradient step
-            loss = -mc_log_prob_tau.sum()
+            loss = -mc_log_prob_tau.mean()
             loss.backward()
 
             # Update progress bar
             bar.suffix = f"Loss {loss.item():e}"
+            # print('\n'.join([str((name, x.grad)) for (name, x) in model.kernel.named_parameters()]))
             return loss
 
         optimizer.step(closure)
@@ -165,6 +167,7 @@ def fitMAP(model, data, cfg):
             # Compute prediction
             predicted_mean = model.transform(model.biasMAP + model.fMAP)
             predicted_mean_3d = predicted_mean.reshape(*data.h_by_column.shape)
+            predicted_mean_3d = predicted_mean_3d.mul(torch.exp(-1.8 * data.h_by_column_std))
             aggregate_predicted_mean_2d = model.aggregate_prediction(predicted_mean_3d.unsqueeze(-1)).squeeze()
 
             # Compute gamma logprob
@@ -196,7 +199,7 @@ def predict(model, data):
         prediction = model.transform(model.biasMAP + model.fMAP).div(data.h_by_column.std())
 
         # Reshape as (time * lat * lon, lev) grid
-        prediction_3d = prediction.reshape(*data.h_by_column.shape)
+        prediction_3d = prediction.reshape(*data.h_by_column.shape).mul(torch.exp(-1.8 * data.h_by_column_std))
     return prediction_3d
 
 
