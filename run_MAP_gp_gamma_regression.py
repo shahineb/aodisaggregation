@@ -1,7 +1,7 @@
 """
-Description : Runs gamma regression experiment
+Description : Runs MAP GP gamma regression experiment
 
-Usage: run_gamma_map_gp_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_MAP_gp_gamma_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -52,7 +52,7 @@ def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
     data = data._replace(x_std=data.x_std.to(device),
                          z=data.z.to(device),
-                         h_by_column=data.h_by_column.to(device))
+                         h_by_column_std=data.h_by_column_std.to(device))
     return data
 
 
@@ -61,20 +61,6 @@ def make_model(cfg, data):
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
-
-    # Define warping transformation
-    if cfg['model']['transform'] == 'linear':
-        transform = lambda x: x
-    elif cfg['model']['transform'] == 'softplus':
-        transform = lambda x: torch.log(1 + torch.exp(x))
-    elif cfg['model']['transform'] == 'smooth_abs':
-        transform = lambda x: torch.nn.functional.smooth_l1_loss(x, torch.zeros_like(x), reduction='none')
-    elif cfg['model']['transform'] == 'square':
-        transform = torch.square
-    elif cfg['model']['transform'] == 'exp':
-        transform = torch.exp
-    else:
-        raise ValueError("Unknown transform")
 
     # Define kernel
     height_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, active_dims=[1]),
@@ -87,8 +73,8 @@ def make_model(cfg, data):
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Instantiate model
-    model = AggregateMAPGPGammaRegression(x=data.h_by_column,
-                                          transform=transform,
+    model = AggregateMAPGPGammaRegression(shapeMAP=data.h_by_column.shape,
+                                          transform=torch.exp,
                                           aggregate_fn=trpz,
                                           kernel=kernel,
                                           ndim=len(cfg['dataset']['3d_covariates']) + 4,
@@ -139,7 +125,6 @@ def fit(model, data, cfg):
 
             # Update progress bar
             bar.suffix = f"Loss {loss.item():e}"
-            # print('\n'.join([str((name, x.grad)) for (name, x) in model.kernel.named_parameters()]))
             return loss
 
         optimizer.step(closure)
@@ -149,8 +134,6 @@ def fit(model, data, cfg):
 
 def fitMAP(model, data, cfg):
     # Define optimizer
-    for p in model.parameters():
-        p.requires_grad = False
     model.fMAP.requires_grad = True
     model.biasMAP.requires_grad = True
     optimizer = torch.optim.LBFGS(params=[model.fMAP, model.biasMAP], lr=cfg['MAP']['lr'])
