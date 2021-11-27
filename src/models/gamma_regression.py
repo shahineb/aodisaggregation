@@ -127,7 +127,7 @@ class AggregateVariationalGPGammaRegression(ApproximateGP):
         variational_strategy = variational.VariationalStrategy(model=self,
                                                                inducing_points=inducing_points,
                                                                variational_distribution=variational_distribution,
-                                                               learn_inducing_locations=False)
+                                                               learn_inducing_locations=True)
         return variational_strategy
 
     def forward(self, inputs):

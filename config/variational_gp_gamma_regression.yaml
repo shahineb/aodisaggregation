@@ -24,7 +24,10 @@ dataset:
 # MODEL SPECIFICATIONS
 model:
   # Whether to use bias or not
-  fit_intercept: True
+  fit_intercept: False
+
+  # Number of inducing points
+  n_inducing_points: 250
 
   # Weights initialization seed
   seed: 42
@@ -34,7 +37,7 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 32
+  n_epochs: 6
 
   # Learning rate
   lr: 0.01
@@ -45,15 +48,9 @@ training:
   # Number of MC samples
   n_samples: 50
 
+  # Batch size
+  batch_size: 32
 
-
-# MAP estimation
-MAP:
-  # Number of training epochs
-  n_epochs: 8
-
-  # Learning rate
-  lr: 1
 
 
 
