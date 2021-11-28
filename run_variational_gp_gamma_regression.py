@@ -38,10 +38,10 @@ def main(args, cfg):
     model = fit(model=model, data=data, cfg=cfg)
 
     # Run prediction
-    prediction_3d = predict(model=model, data=data)
+    prediction_3d_dist = predict(model=model, data=data)
 
     # Run evaluation
-    evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+    evaluate(prediction_3d_dist=prediction_3d_dist, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def migrate_to_device(data, device):
@@ -60,9 +60,9 @@ def make_model(cfg, data):
         return aggregated_grid
 
     # Define kernel
-    height_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, active_dims=[1]),
+    height_kernel = kernels.ScaleKernel(kernels.RBFKernel(active_dims=[1]),
                                         outputscale_constraint=constraints.GreaterThan(0))
-    covariates_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[4, 5]),
+    covariates_kernel = kernels.ScaleKernel(kernels.RBFKernel(ard_num_dims=2, active_dims=[4, 5]),
                                             outputscale_constraint=constraints.GreaterThan(0))
     kernel = height_kernel + covariates_kernel
 
@@ -159,16 +159,20 @@ def predict(model, data):
     with torch.no_grad():
         # Predict on standardized 3D covariates
         qf_by_column = model(data.x_by_column_std)
-        fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1000)
+        fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=2000)
         fs = fs.add(qf_by_column.mean)
         prediction = model.transform(fs).div(data.h_by_column.std())
 
         # Reshape as (time * lat * lon, lev) grid
-        prediction_3d = prediction.mul(torch.exp(-1.8 * data.h_by_column_std))
-    return prediction_3d.mean(dim=0)
+        prediction_3d = prediction.mul(torch.exp(-1.8 * data.h_by_column_std)).mean(dim=0)
+
+        # Make distribution
+        alpha, beta = model.reparametrize(prediction_3d)
+        prediction_3d_dist = torch.distributions.Gamma(alpha, beta)
+    return prediction_3d_dist
 
 
-def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
+def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
@@ -182,13 +186,13 @@ def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     if plot:
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
-                   prediction_3d=prediction_3d.cpu(),
+                   prediction_3d_dist=prediction_3d_dist,
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
 
     # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d.cpu(),
+    dump_scores(prediction_3d=prediction_3d_dist.mean.cpu(),
                 groundtruth_3d=data.gt_by_column,
                 targets_2d=data.z,
                 aggregate_fn=trpz,

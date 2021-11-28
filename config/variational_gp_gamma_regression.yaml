@@ -27,7 +27,7 @@ model:
   fit_intercept: False
 
   # Number of inducing points
-  n_inducing_points: 250
+  n_inducing_points: 200
 
   # Weights initialization seed
   seed: 42
@@ -37,7 +37,7 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 6
+  n_epochs: 8
 
   # Learning rate
   lr: 0.01
@@ -68,3 +68,12 @@ evaluation:
     - relhum
     - ALFA_AER_533nm
     - log_ALFA_AER_533nm
+
+  # Time index of profiles to plot
+  profiles_time_idx: 0
+
+  # Number of profils to plot
+  n_profiles: 10
+
+  # Random seed to choose profiles
+  seed: 5

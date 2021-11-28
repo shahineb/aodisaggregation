@@ -42,10 +42,10 @@ def main(args, cfg):
     model = fitMAP(model=model, data=data, cfg=cfg)
 
     # Run prediction
-    prediction_3d = predict(model=model, data=data)
+    prediction_3d_dist = predict(model=model, data=data)
 
     # Run evaluation
-    evaluate(prediction_3d=prediction_3d, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+    evaluate(prediction_3d_dist=prediction_3d_dist, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def migrate_to_device(data, device):
@@ -183,10 +183,14 @@ def predict(model, data):
 
         # Reshape as (time * lat * lon, lev) grid
         prediction_3d = prediction.reshape(*data.h_by_column.shape).mul(torch.exp(-1.8 * data.h_by_column_std))
-    return prediction_3d
+
+        # Make distribution
+        alpha, beta = model.reparametrize(prediction_3d)
+        prediction_3d_dist = torch.distributions.Gamma(alpha, beta)
+    return prediction_3d_dist
 
 
-def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
+def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
@@ -200,13 +204,13 @@ def evaluate(prediction_3d, data, model, cfg, plot, output_dir):
     if plot:
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
-                   prediction_3d=prediction_3d.cpu(),
+                   prediction_3d_dist=prediction_3d_dist,
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
 
     # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d.cpu(),
+    dump_scores(prediction_3d=prediction_3d_dist.mean.cpu(),
                 groundtruth_3d=data.gt_by_column,
                 targets_2d=data.z,
                 aggregate_fn=trpz,

@@ -71,3 +71,12 @@ evaluation:
     - relhum
     - ALFA_AER_533nm
     - log_ALFA_AER_533nm
+
+  # Time index of profiles to plot
+  profiles_time_idx: 0
+
+  # Number of profils to plot
+  n_profiles: 10
+
+  # Random seed to choose profiles
+  seed: 5
