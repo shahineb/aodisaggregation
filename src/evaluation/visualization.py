@@ -239,3 +239,52 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
     plt.legend(fontsize=labels_fontsize)
     plt.tight_layout()
     return fig, ax
+
+
+def plot_vertical_prediction_profiles(dataset, time_idx, latlon_indices,
+                                      groundtruth_key, prediction_3d_grid, prediction_3d_grid_std):
+    """Plots vertical predicted vertical profiles with uncertainty and groundtruth
+    at specified lat/lon
+
+    Args:
+        dataset (xr.Dataset): source dataset
+        time_idx (int): index of time to use for slice
+        latlon_indices (list[tuple[int]]): index of latitude/longitudes to use for profiles
+        groundtruth_key (str): name of groundtruth variable
+        prediction_dist (torch.distribution.Gamma): (time * lat * lon, lev) predicted gamma distribution
+
+    Returns:
+        type: matplotlib.figure.Figure, numpy.ndarray
+
+    """
+    title_fontsize = 18
+    labels_fontsize = 16
+    ticks_fontsize = 14
+
+    n_cols = len(latlon_indices)
+    fig, ax = plt.subplots(1, n_cols, figsize=(5 * n_cols, 8))
+    for i, (lat_idx, lon_idx) in enumerate(latlon_indices):
+        h = dataset.isel(lat=lat_idx, time=time_idx, lon=lon_idx).height.values
+        predicted_profile = prediction_3d_grid[time_idx, lat_idx, lon_idx]
+        predicted_profile_std = prediction_3d_grid_std[time_idx, lat_idx, lon_idx]
+        lower_bound = predicted_profile - predicted_profile_std
+        upper_bound = predicted_profile + predicted_profile_std
+        groundtruth_profile = dataset.isel(lat=lat_idx,
+                                           lon=lon_idx,
+                                           time=time_idx)[groundtruth_key].values.flatten()
+        lat = round(dataset.lat[lat_idx].values.item(), 1)
+        lon = round(dataset.lon[lon_idx].values.item(), 1)
+
+        ax[i].plot(groundtruth_profile, h, label='Groundtruth', color='cornflowerblue')
+        ax[i].plot(predicted_profile, h, label='Prediction', color='tomato')
+        ax[i].fill_betweenx(x1=lower_bound, x2=upper_bound, y=h, color='tomato', alpha=0.3, label=r'$\pm\sigma$')
+        ax[i].set_xlabel(r'$b_{ext}$ $(m^{-1})$', fontsize=labels_fontsize)
+        ax[i].set_ylabel('Altitude', rotation=90, fontsize=labels_fontsize)
+        ax[i].grid(alpha=0.5)
+        ax[i].xaxis.set_tick_params(labelsize=ticks_fontsize, rotation=45)
+        ax[i].yaxis.set_tick_params(labelsize=ticks_fontsize)
+        ax[i].set_title(f'lat, lon {(lat, lon)}', fontsize=title_fontsize)
+
+    plt.legend(fontsize=labels_fontsize)
+    plt.tight_layout()
+    return fig, ax

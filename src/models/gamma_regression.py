@@ -1,34 +1,23 @@
 import torch
 import torch.nn as nn
-from torch.distributions.gamma import Gamma
+from gpytorch import means, distributions
+from gpytorch.models import ApproximateGP
+from gpytorch import variational
 
 
-class AggregateMAPGPGammaRegression(nn.Module):
-    """MAP gamma regression over aggregate targets with GP prior over mean
-
-    Args:
-        shapeMAP (tuple[int]): shape of MAP tensor
-        transform (callable): positive link function to apply to prediction
-        kernel (gpytorch.kernels.Kernel): GP prior kernel
-        aggregate_fn (callable): aggregation operator
-        ndim (int): dimensionality of input samples
-        fit_intercept (bool): if True, GP has constant mean, else GP has zero mean
-
-    """
-    def __init__(self, shapeMAP, transform, kernel, aggregate_fn, ndim, fit_intercept=False):
-        super().__init__()
-        self.fMAP = nn.Parameter(torch.zeros(shapeMAP))
-        self.biasMAP = nn.Parameter(torch.zeros(1))
+class AggregateVariationalGPGammaRegression(ApproximateGP):
+    def __init__(self, inducing_points, transform, kernel, aggregate_fn, ndim, fit_intercept=False):
+        variational_strategy = self._set_variational_strategy(inducing_points)
+        super().__init__(variational_strategy=variational_strategy)
         self.raw_scale = nn.Parameter(torch.zeros(1))
-        self.transform = transform
         self.kernel = kernel
+        self.transform = transform
         self.aggregate_fn = aggregate_fn
         self.fit_intercept = fit_intercept
-        self.ndim = ndim
         if self.fit_intercept:
-            self.bias = nn.Parameter(torch.zeros(1))
+            self.mean = means.ConstantMean()
         else:
-            self.bias = 0.
+            self.mean = means.ZeroMean()
 
     @property
     def scale(self):
@@ -49,27 +38,37 @@ class AggregateMAPGPGammaRegression(nn.Module):
         beta = self.scale / mu
         return alpha, beta
 
-    def forward(self):
-        """Runs prediction.
-
+    def _set_variational_strategy(self, inducing_points):
+        """Sets variational family of distribution to use and variational approximation
+            strategy module
         Args:
-            x (torch.Tensor): (n_samples, ndim)
-                samples must not need to be organized by bags
+            inducing_points (torch.Tensor): tensor of landmark points from which to
+                compute inducing values
         Returns:
-            type: torch.Tensor
+            type: gpytorch.variational.VariationalStrategy
         """
-        mu = self.transform(self.bias + self.fMAP)
-        alpha, beta = self.reparametrize(mu=mu)
-        output = Gamma(concentration=alpha, rate=beta)
-        return output
+        # Use gaussian variational family
+        variational_distribution = variational.CholeskyVariationalDistribution(num_inducing_points=inducing_points.size(0))
 
-    def aggregate_prediction(self, prediction):
-        """Computes aggregation of individuals output prediction.
+        # Set default variational approximation strategy
+        variational_strategy = variational.VariationalStrategy(model=self,
+                                                               inducing_points=inducing_points,
+                                                               variational_distribution=variational_distribution,
+                                                               learn_inducing_locations=True)
+        return variational_strategy
 
+    def forward(self, inputs):
+        """Defines prior distribution on input x as multivariate normal N(m(x), k(x, x))
         Args:
-            prediction (torch.Tensor): (n_bag, bags_size) tensor output of forward
+            inputs (torch.Tensor): input values
         Returns:
-            type: Gamma
+            type: gpytorch.distributions.MultivariateNormal
         """
-        aggregated_prediction = self.aggregate_fn(prediction)
-        return aggregated_prediction
+        # Compute mean vector and covariance matrix on input samples
+        mean = self.mean(inputs)
+        covar = self.kernel(inputs)
+
+        # Build multivariate normal distribution of model evaluated on input samples
+        prior_distribution = distributions.MultivariateNormal(mean=mean,
+                                                              covariance_matrix=covar)
+        return prior_distribution
