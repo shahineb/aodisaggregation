@@ -1,3 +1,3 @@
-from .gamma_regression import AggregateVariationalGPGammaRegression
+from .gamma_regression import AggregateGammaSVGP
 
-__all__ = ['AggregateVariationalGPGammaRegression']
+__all__ = ['AggregateGammaSVGP']

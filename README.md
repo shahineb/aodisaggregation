@@ -1,6 +1,14 @@
 # Reconstructing Aerosols Vertical Profiles with Aggregate Output Learning
 
 
+## Getting started
+
+- Run from root directory
+```bash
+$ python run_svgp_vertical_profile.py --cfg=cfg/svgp.yaml --o=path/to/output/directory --plot
+```
+
+
 ## Installation
 
 Code implemented in Python 3.8.0

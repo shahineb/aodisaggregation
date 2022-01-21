@@ -1,7 +1,7 @@
 """
-Description : Runs variational GP gamma regression experiment
+Description : Runs sparse variational GP aerosol vertical profile reconstruction
 
-Usage: run_variational_gp_gamma_regression.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -17,7 +17,7 @@ from progress.bar import Bar
 import torch
 from gpytorch import kernels
 from src.preprocessing import make_data
-from src.models import AggregateVariationalGPGammaRegression
+from src.models import AggregateGammaSVGP
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
 
 
@@ -71,17 +71,15 @@ def make_model(cfg, data):
 
     # Initialize inducing points at low altitude levels
     lowaltitude_x_std = data.x_std[data.x_std[:, -1] < -0.8]
-    # lowaltitude_x_std = data.x_std
     rdm_idx = torch.randperm(len(lowaltitude_x_std))[:cfg['model']['n_inducing_points']]
     inducing_points = lowaltitude_x_std[rdm_idx].float()
 
     # Instantiate model
-    model = AggregateVariationalGPGammaRegression(inducing_points=inducing_points,
-                                                  transform=torch.exp,
-                                                  aggregate_fn=trpz,
-                                                  kernel=kernel,
-                                                  ndim=len(cfg['dataset']['3d_covariates']) + 4,
-                                                  fit_intercept=cfg['model']['fit_intercept'])
+    model = AggregateGammaSVGP(inducing_points=inducing_points,
+                               transform=torch.exp,
+                               aggregate_fn=trpz,
+                               kernel=kernel,
+                               fit_intercept=cfg['model']['fit_intercept'])
     return model.to(device)
 
 
@@ -98,11 +96,14 @@ def fit(model, data, cfg):
     # Define optimizer and exact loglikelihood module
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
-    # Initialize progress bar
+    # Extract useful variables
+    lbda = cfg['model']['lbda']
+    n_MC_samples = cfg['training']['n_samples']
     n_epochs = cfg['training']['n_epochs']
     batch_size = cfg['training']['batch_size']
-    n_MC_samples = cfg['training']['n_samples']
     n_samples = len(data.z)
+
+    # Initialize progress bar
     epoch_bar = Bar("Epoch", max=n_epochs)
     epoch_bar.finish()
     torch.random.manual_seed(cfg['training']['seed'])
@@ -126,7 +127,7 @@ def fit(model, data, cfg):
             # Transform into aggregate predictions
             predicted_means = model.transform(fs)
             predicted_means_3d = predicted_means.reshape((n_MC_samples,) + h_by_column_std.shape)
-            predicted_means_3d = predicted_means_3d.mul(torch.exp(-1.8 * h_by_column_std))
+            predicted_means_3d = predicted_means_3d.mul(torch.exp(-lbda * h_by_column_std))
             aggregate_predicted_means_2d = -torch.trapz(y=predicted_means_3d.unsqueeze(-1),
                                                         x=h_by_column_std.tile((n_MC_samples, 1, 1)).unsqueeze(-1),
                                                         dim=-2).squeeze()
@@ -165,6 +166,7 @@ def predict(model, data, cfg):
     # Setup index iteration and progress bar
     indices = torch.arange(len(data.x_by_column_std))
     n_samples = len(data.z)
+    lbda = cfg['model']['lbda']
     batch_size = cfg['evaluation']['batch_size']
     batch_bar = Bar("Inference", max=n_samples // batch_size)
 
@@ -175,7 +177,7 @@ def predict(model, data, cfg):
             fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1000)
             fs = fs.add(qf_by_column.mean)
             prediction = model.transform(fs).div(h_stddev)
-            prediction = prediction.mul(torch.exp(-1.8 * data.h_by_column_std[idx])).mean(dim=0)
+            prediction = prediction.mul(torch.exp(-lbda * data.h_by_column_std[idx])).mean(dim=0)
 
             # Register in grid
             prediction_3d[idx] = prediction

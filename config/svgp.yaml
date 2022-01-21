@@ -30,6 +30,9 @@ model:
   # Number of inducing points
   n_inducing_points: 60
 
+  # Idealized profile lengthscale parameter
+  lbda: 1.8
+
   # Weights initialization seed
   seed: 42
 
@@ -38,7 +41,7 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 1
+  n_epochs: 4
 
   # Learning rate
   lr: 0.01

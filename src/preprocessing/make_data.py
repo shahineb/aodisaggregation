@@ -55,7 +55,7 @@ def make_data(cfg, include_2d=False):
     # Load dataset as defined in main code
     dataset = load_dataset(cfg['dataset']['path'])
 
-    # TODO : DISABLE IN FINAL VERSION – Subset to speed up testing
+    # TODO : DISABLE IN FINAL VERSION – Subset to speed up development
     # dataset = dataset.isel(lat=slice(30, 60), lon=slice(35, 55), time=slice(0, 3))
 
     # Compute standardized version

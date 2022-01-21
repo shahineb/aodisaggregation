@@ -5,8 +5,18 @@ from gpytorch.models import ApproximateGP
 from gpytorch import variational
 
 
-class AggregateVariationalGPGammaRegression(ApproximateGP):
-    def __init__(self, inducing_points, transform, kernel, aggregate_fn, ndim, fit_intercept=False):
+class AggregateGammaSVGP(ApproximateGP):
+    """Sparse Variational GP model that aggregates into the mean of a Gamma likelihood
+
+    Args:
+        inducing_points (torch.Tensor): sparse GP inducing points intialization.
+        transform (callable): positive link function mapping the GP onto the Gamma mean.
+        kernel (gpytorch.kernels.Kernel): GP covariance function.
+        aggregate_fn (callable): aggregation operator that aggregates the transformed GP.
+        fit_intercept (bool): if True, uses constant mean for the GP.
+
+    """
+    def __init__(self, inducing_points, transform, kernel, aggregate_fn, fit_intercept=False):
         variational_strategy = self._set_variational_strategy(inducing_points)
         super().__init__(variational_strategy=variational_strategy)
         self.raw_scale = nn.Parameter(torch.zeros(1))
@@ -25,7 +35,7 @@ class AggregateVariationalGPGammaRegression(ApproximateGP):
 
     def reparametrize(self, mu):
         """Computes gamma distribution concentrations (i.e. βi) out of
-        mean values μi and shared precision α
+        mean values μi and shared scale α
 
         Args:
             mu (torch.tensor): (n_samples,) tensor of means of each sample
