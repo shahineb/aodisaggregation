@@ -12,6 +12,7 @@ dataset:
     - pressure_as_normal
     - relhum_as_normal
     # - ALFA_AER_533nm_as_normal
+    - height
 
   # Variable to use as 2D aggregate target
   target: TAU_2D_550nm
@@ -27,7 +28,7 @@ model:
   fit_intercept: False
 
   # Number of inducing points
-  n_inducing_points: 200
+  n_inducing_points: 60
 
   # Weights initialization seed
   seed: 42
@@ -37,7 +38,7 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 8
+  n_epochs: 1
 
   # Learning rate
   lr: 0.01
@@ -46,16 +47,22 @@ training:
   seed: 42
 
   # Number of MC samples
-  n_samples: 50
+  n_samples: 1
 
   # Batch size
-  batch_size: 32
+  batch_size: 64
 
 
 
 
 # EVALUATION
 evaluation:
+  # Size of batches used for inference
+  batch_size: 50
+
+  # Number of MC samples used for posterior mean estimation
+  n_samples: 1000
+
   # Latitude index of slice to plot
   slice_latitude_idx: 20
 

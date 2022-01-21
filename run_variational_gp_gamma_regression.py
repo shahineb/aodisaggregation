@@ -15,7 +15,7 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
-from gpytorch import kernels, constraints
+from gpytorch import kernels
 from src.preprocessing import make_data
 from src.models import AggregateVariationalGPGammaRegression
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
@@ -38,7 +38,7 @@ def main(args, cfg):
     model = fit(model=model, data=data, cfg=cfg)
 
     # Run prediction
-    prediction_3d_dist = predict(model=model, data=data)
+    prediction_3d_dist = predict(model=model, data=data, cfg=cfg)
 
     # Run evaluation
     evaluate(prediction_3d_dist=prediction_3d_dist, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
@@ -50,6 +50,7 @@ def migrate_to_device(data, device):
                          x_by_column_std=data.x_by_column_std.to(device),
                          z=data.z.to(device),
                          h_by_column_std=data.h_by_column_std.to(device))
+
     return data
 
 
@@ -60,18 +61,19 @@ def make_model(cfg, data):
         return aggregated_grid
 
     # Define kernel
-    height_kernel = kernels.ScaleKernel(kernels.RBFKernel(active_dims=[1]),
-                                        outputscale_constraint=constraints.GreaterThan(0))
-    covariates_kernel = kernels.ScaleKernel(kernels.RBFKernel(ard_num_dims=2, active_dims=[4, 5]),
-                                            outputscale_constraint=constraints.GreaterThan(0))
-    kernel = height_kernel + covariates_kernel
+    time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
+    latlon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[2, 3]))
+    covariates_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[4, 5]))
+    kernel = time_kernel * latlon_kernel + covariates_kernel
 
     # Fix initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
 
-    # Initialize inducing points regularly across grid
-    rdm_idx = torch.randperm(len(data.x_std))[:cfg['model']['n_inducing_points']]
-    inducing_points = data.x_std[rdm_idx].float()
+    # Initialize inducing points at low altitude levels
+    lowaltitude_x_std = data.x_std[data.x_std[:, -1] < -0.8]
+    # lowaltitude_x_std = data.x_std
+    rdm_idx = torch.randperm(len(lowaltitude_x_std))[:cfg['model']['n_inducing_points']]
+    inducing_points = lowaltitude_x_std[rdm_idx].float()
 
     # Instantiate model
     model = AggregateVariationalGPGammaRegression(inducing_points=inducing_points,
@@ -155,16 +157,32 @@ def fit(model, data, cfg):
     return model
 
 
-def predict(model, data):
-    with torch.no_grad():
-        # Predict on standardized 3D covariates
-        qf_by_column = model(data.x_by_column_std)
-        fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=2000)
-        fs = fs.add(qf_by_column.mean)
-        prediction = model.transform(fs).div(data.h_by_column.std())
+def predict(model, data, cfg):
+    # Initialize empty tensor
+    prediction_3d = torch.zeros_like(data.h_by_column_std)
+    h_stddev = data.h_by_column.std()
 
-        # Reshape as (time * lat * lon, lev) grid
-        prediction_3d = prediction.mul(torch.exp(-1.8 * data.h_by_column_std)).mean(dim=0)
+    # Setup index iteration and progress bar
+    indices = torch.arange(len(data.x_by_column_std))
+    n_samples = len(data.z)
+    batch_size = cfg['evaluation']['batch_size']
+    batch_bar = Bar("Inference", max=n_samples // batch_size)
+
+    with torch.no_grad():
+        for idx in indices.split(batch_size):
+            # Predict on standardized 3D covariates
+            qf_by_column = model(data.x_by_column_std[idx])
+            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1000)
+            fs = fs.add(qf_by_column.mean)
+            prediction = model.transform(fs).div(h_stddev)
+            prediction = prediction.mul(torch.exp(-1.8 * data.h_by_column_std[idx])).mean(dim=0)
+
+            # Register in grid
+            prediction_3d[idx] = prediction
+
+            # Update progress bar
+            batch_bar.suffix = f"{idx[-1]}/{n_samples} columns"
+            batch_bar.next()
 
         # Make distribution
         alpha, beta = model.reparametrize(prediction_3d)
