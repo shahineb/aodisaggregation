@@ -11,6 +11,8 @@ dataset:
   3d_covariates:
     - pressure_as_normal
     - relhum_as_normal
+    # - temp2_as_normal
+    # - wind10_as_normal
     # - ALFA_AER_533nm_as_normal
     - height
 
@@ -41,7 +43,7 @@ model:
 # TRAINING
 training:
   # Number of training epochs
-  n_epochs: 4
+  n_epochs: 2
 
   # Learning rate
   lr: 0.01

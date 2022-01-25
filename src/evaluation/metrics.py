@@ -60,6 +60,7 @@ def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
 
     # Compute raw distances metrics
     difference = aggregate_prediction_2d.sub(targets_2d)
+    mean_bias = difference.mean()
     rmse = torch.square(difference).mean().sqrt()
     mae = torch.abs(difference).mean()
 
@@ -71,12 +72,19 @@ def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
     # Compute spearman correlation
     corr = spearman_correlation(aggregate_prediction_2d, targets_2d)
 
+    # Compute quantiles bias
+    bias50 = torch.quantile(aggregate_prediction_2d, q=0.50) - torch.quantile(targets_2d, q=0.50)
+    bias90 = torch.quantile(aggregate_prediction_2d, q=0.90) - torch.quantile(targets_2d, q=0.90)
+
     # Encapsulate results in output dictionnary
-    output = {'rmse': rmse.item(),
+    output = {'mb': mean_bias.item(),
+              'rmse': rmse.item(),
               'mae': mae.item(),
               'nrmse': nrmse.item(),
               'nmae': nmae.item(),
-              'corr': corr}
+              'corr': corr,
+              'bias50': bias50.item(),
+              'bias90': bias90.item()}
     return output
 
 
@@ -94,6 +102,7 @@ def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
     """
     # Compute raw distances metrics
     difference = prediction_3d.sub(groundtruth_3d)
+    mean_bias = difference.mean()
     rmse = torch.square(difference).mean().sqrt()
     mae = torch.abs(difference).mean()
 
@@ -105,12 +114,19 @@ def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
     # Compute spearman correlation
     corr = spearman_correlation(prediction_3d.flatten(), groundtruth_3d.flatten())
 
+    # Compute quantiles bias
+    bias50 = torch.quantile(prediction_3d, q=0.50) - torch.quantile(groundtruth_3d, q=0.50)
+    bias90 = torch.quantile(prediction_3d, q=0.90) - torch.quantile(groundtruth_3d, q=0.90)
+
     # Encapsulate results in output dictionnary
-    output = {'rmse': rmse.item(),
+    output = {'mb': mean_bias.item(),
+              'rmse': rmse.item(),
               'mae': mae.item(),
               'nrmse': nrmse.item(),
               'nmae': nmae.item(),
-              'corr': corr}
+              'corr': corr,
+              'bias50': bias50.item(),
+              'bias90': bias90.item()}
     return output
 
 
@@ -130,9 +146,12 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
     difference = prediction_3d.sub(groundtruth_3d)
 
     # Compute metrics columnwise and average out
+    mean_bias = difference.mean(dim=-1).mean()
     rmse = torch.square(difference).mean(dim=-1).sqrt().mean()
     mae = torch.abs(difference).mean(dim=-1).mean()
     corr = np.mean([spearman_correlation(pred, gt) for (pred, gt) in zip(prediction_3d, groundtruth_3d)])
+    bias50 = torch.mean(torch.quantile(prediction_3d, q=0.50, dim=-1) - torch.quantile(groundtruth_3d, q=0.50), dim=-1)
+    bias90 = torch.mean(torch.quantile(prediction_3d, q=0.90, dim=-1) - torch.quantile(groundtruth_3d, q=0.90), dim=-1)
 
     # Compute normalized distances metrics
     q25, q75 = torch.quantile(groundtruth_3d, q=torch.tensor([0.25, 0.75]))
@@ -140,11 +159,14 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
     nmae = mae.div(q75 - q25)
 
     # Encapsulate results in output dictionnary
-    output = {'rmse': rmse.item(),
+    output = {'mb': mean_bias.item(),
+              'rmse': rmse.item(),
               'mae': mae.item(),
               'nrmse': nrmse.item(),
               'nmae': nmae.item(),
-              'corr': float(corr)}
+              'corr': float(corr),
+              'bias50': bias50.item(),
+              'bias90': bias90.item()}
     return output
 
 
