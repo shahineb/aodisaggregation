@@ -65,8 +65,8 @@ def make_model(cfg, data):
     time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
     latlon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[2, 3]))
     covariates_3d_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[4, 5]))
-    # covariates_2d_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[6, 7]))
-    kernel = time_kernel * latlon_kernel + covariates_3d_kernel
+    covariates_2d_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[6, 7]))
+    kernel = time_kernel * latlon_kernel + covariates_3d_kernel + covariates_2d_kernel
 
     # Fix initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
