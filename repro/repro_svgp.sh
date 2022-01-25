@@ -10,5 +10,5 @@ SVGP_OUTDIR=experiments/data/outputs/svgp
 for SEED in 2 3 5 7 11 ;
 do
   DIRNAME=seed_$SEED
-  python run_svgp_vertical_profile.py --seed=$SEED --cfg=$SVGP_CFG --o=$SVGP_OUTDIR --plot
+  python run_svgp_vertical_profile.py --seed=$SEED --cfg=$SVGP_CFG --o=$SVGP_OUTDIR/$DIRNAME
 done

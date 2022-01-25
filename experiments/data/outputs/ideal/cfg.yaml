@@ -1,0 +1,20 @@
+dataset:
+  3d_covariates:
+  - height
+  groundtruth: ALFA_AER_533nm
+  path: data/aodisaggregation_emmisions_test_6.3_ACCMIP_200806.06_echam.nc
+  target: TAU_2D_550nm
+evaluation:
+  n_profiles: 10
+  noise: 1.0e-05
+  profiles_time_idx: 0
+  seed: 5
+  slice_latitude_idx: 20
+  slice_time_idx: 0
+  slices_covariates:
+  - pressure
+  - relhum
+  - ALFA_AER_533nm
+  - log_ALFA_AER_533nm
+model:
+  lbda: 1.8

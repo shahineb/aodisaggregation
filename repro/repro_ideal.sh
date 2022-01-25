@@ -7,4 +7,4 @@ IDEAL_OUTDIR=experiments/data/outputs/ideal
 
 
 # Run experiments for multiple seeds
-python run_ideal_vertical_profile.py --seed=$SEED --cfg=$IDEAL_CFG --o=$IDEAL_OUTDIR --plot
+python run_ideal_vertical_profile.py --cfg=$IDEAL_CFG --o=$IDEAL_OUTDIR
