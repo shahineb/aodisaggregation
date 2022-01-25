@@ -1,8 +1,6 @@
 """
 Description : Runs sparse variational GP aerosol vertical profile reconstruction
-
 Usage: run_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
-
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
   --o=<output_dir>                 Output directory.

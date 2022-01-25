@@ -8,6 +8,9 @@
 $ python run_svgp_vertical_profile.py --cfg=cfg/svgp.yaml --o=path/to/output/directory --plot
 ```
 
+## TODO
+[ ] Make sure device handling in run scripts works 
+
 
 ## Installation
 
