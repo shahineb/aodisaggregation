@@ -6,6 +6,7 @@ Options:
   --o=<output_dir>                 Output directory.
   --device=<device_index>          Device to use [default: cpu]
   --plot                           Outputs plots.
+  --seed=<seed>                    Random seed.
 """
 import os
 import yaml
@@ -169,6 +170,9 @@ def predict(model, data, cfg):
     batch_size = cfg['evaluation']['batch_size']
     batch_bar = Bar("Inference", max=n_samples // batch_size)
 
+    # Set seed for prediction
+    torch.random.manual_seed(cfg['training']['seed'])
+
     with torch.no_grad():
         for idx in indices.split(batch_size):
             # Predict on standardized 3D covariates
@@ -219,6 +223,13 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
     logging.info("Dumped scores")
 
 
+def update_cfg(cfg, args):
+    if args['--seed']:
+        cfg['model']['seed'] = int(args['--seed'])
+        cfg['training']['seed'] = int(args['--seed'])
+    return cfg
+
+
 if __name__ == "__main__":
     # Read input args
     args = docopt(__doc__)
@@ -226,6 +237,7 @@ if __name__ == "__main__":
     # Load config file
     with open(args['--cfg'], "r") as f:
         cfg = yaml.safe_load(f)
+    cfg = update_cfg(cfg, args)
 
     # Setup logging
     logging.basicConfig(level=logging.INFO)

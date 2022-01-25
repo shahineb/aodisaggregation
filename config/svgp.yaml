@@ -88,4 +88,4 @@ evaluation:
   n_profiles: 10
 
   # Random seed to choose profiles
-  seed: 5
+  seed: 5s
