@@ -164,9 +164,10 @@ def predict(model, data, cfg):
     # Initialize empty tensor
     prediction_3d = torch.zeros_like(data.h_by_column_std)
     h_stddev = data.h_by_column.std()
+    n_MC_samples = cfg['evaluation']['n_samples']
 
     # Setup index iteration and progress bar
-    indices = torch.arange(len(data.x_by_column_std))
+    indices = torch.arange(len(data.x_by_column_std)).to(device)
     n_samples = len(data.z)
     lbda = cfg['model']['lbda']
     batch_size = cfg['evaluation']['batch_size']
@@ -179,7 +180,7 @@ def predict(model, data, cfg):
         for idx in indices.split(batch_size):
             # Predict on standardized 3D covariates
             qf_by_column = model(data.x_by_column_std[idx])
-            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1000)
+            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=n_MC_samples)
             fs = fs.add(qf_by_column.mean)
             prediction = model.transform(fs).div(h_stddev)
             prediction = prediction.mul(torch.exp(-lbda * data.h_by_column_std[idx])).mean(dim=0)
@@ -219,7 +220,7 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
     # Dump scores in output dir
     dump_scores(prediction_3d=prediction_3d_dist.mean.cpu(),
                 groundtruth_3d=data.gt_by_column,
-                targets_2d=data.z,
+                targets_2d=data.z.cpu(),
                 aggregate_fn=trpz,
                 output_dir=output_dir)
     logging.info("Dumped scores")

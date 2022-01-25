@@ -16,8 +16,8 @@ def dump_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn, output_
 
 def dump_plots(cfg, dataset, prediction_3d_dist, aggregate_fn, output_dir):
     # Reshape prediction as (time, lat, lon, lev) grids for visualization
-    prediction_3d_grid = prediction_3d_dist.mean.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1)
-    prediction_3d_grid_std = prediction_3d_dist.stddev.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1)
+    prediction_3d_grid = prediction_3d_dist.mean.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
+    prediction_3d_grid_std = prediction_3d_dist.stddev.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
 
     # First plot - aggregate 2D prediction
     dump_path = os.path.join(output_dir, 'aggregated_2d_prediction.png')
