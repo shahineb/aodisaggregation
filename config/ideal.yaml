@@ -9,11 +9,6 @@ dataset:
 
   # Variables to use as 3D covariates
   3d_covariates:
-    - pressure_as_normal
-    - relhum_as_normal
-    # - temp2_as_normal
-    # - wind10_as_normal
-    # - ALFA_AER_533nm_as_normal
     - height
 
   # Variable to use as 2D aggregate target
@@ -26,47 +21,16 @@ dataset:
 
 # MODEL SPECIFICATIONS
 model:
-  # Whether to use bias or not
-  fit_intercept: False
-
-  # Number of inducing points
-  n_inducing_points: 60
-
   # Idealized profile heigthscale parameter
   lbda: 1.8
-
-  # Weights initialization seed
-  seed: 42
-
-
-
-# TRAINING
-training:
-  # Number of training epochs
-  n_epochs: 2
-
-  # Learning rate
-  lr: 0.01
-
-  # Random seed for MC sampling
-  seed: 42
-
-  # Number of MC samples
-  n_samples: 1
-
-  # Batch size
-  batch_size: 64
 
 
 
 
 # EVALUATION
 evaluation:
-  # Size of batches used for inference
-  batch_size: 50
-
-  # Number of MC samples used for posterior mean estimation
-  n_samples: 1000
+  # Fixed white noise term to make a distribution (not important)
+  noise: 0.00001
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20
