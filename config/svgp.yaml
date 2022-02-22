@@ -11,8 +11,6 @@ dataset:
   3d_covariates:
     - pressure_as_normal
     - relhum_as_normal
-    - vtiled_temp2_as_normal
-    - vtiled_wind10_as_normal
     # - ALFA_AER_533nm_as_normal
     - height
 
@@ -44,6 +42,7 @@ model:
 training:
   # Number of training epochs
   n_epochs: 2
+  # n_epochs: 6
 
   # Learning rate
   lr: 0.01
@@ -56,6 +55,7 @@ training:
 
   # Batch size
   batch_size: 64
+  # batch_size: 8
 
 
 
@@ -78,7 +78,6 @@ evaluation:
   slices_covariates:
     - pressure
     - relhum
-    - ALFA_AER_533nm
 
   # Time index of profiles to plot
   profiles_time_idx: 0

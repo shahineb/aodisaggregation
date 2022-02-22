@@ -19,7 +19,7 @@ class AggregateGammaSVGP(ApproximateGP):
     def __init__(self, inducing_points, transform, kernel, aggregate_fn, fit_intercept=False):
         variational_strategy = self._set_variational_strategy(inducing_points)
         super().__init__(variational_strategy=variational_strategy)
-        self.raw_scale = nn.Parameter(torch.zeros(1))
+        self.raw_shape = nn.Parameter(torch.zeros(1))
         self.kernel = kernel
         self.transform = transform
         self.aggregate_fn = aggregate_fn
@@ -30,12 +30,12 @@ class AggregateGammaSVGP(ApproximateGP):
             self.mean = means.ZeroMean()
 
     @property
-    def scale(self):
-        return torch.log(1 + torch.exp(self.raw_scale))
+    def shape(self):
+        return torch.log(1 + torch.exp(self.raw_shape))
 
     def reparametrize(self, mu):
         """Computes gamma distribution concentrations (i.e. βi) out of
-        mean values μi and shared scale α
+        mean values μi and shared shape α
 
         Args:
             mu (torch.tensor): (n_samples,) tensor of means of each sample
@@ -44,8 +44,8 @@ class AggregateGammaSVGP(ApproximateGP):
             type: torch.Tensor, torch.Tensor
 
         """
-        alpha = self.scale
-        beta = self.scale / mu
+        alpha = self.shape
+        beta = self.shape / mu
         return alpha, beta
 
     def _set_variational_strategy(self, inducing_points):

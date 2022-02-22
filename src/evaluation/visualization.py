@@ -112,7 +112,8 @@ def plot_3d_covariates_slices(dataset, lat_idx, time_idx, covariates_keys):
     return fig, ax
 
 
-def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d_grid, aggregate_fn):
+def plot_aggregate_2d_predictions(dataset, target_key, aggregate_prediction_2d,
+                                  aggregate_prediction_2d_q025, aggregate_prediction_2d_q975):
     """Plots aggregation of 3D+t prediction, 2D+t aggregate targets used for training and difference
 
     Args:
@@ -125,14 +126,9 @@ def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d_grid, aggre
         type: matplotlib.figure.Figure, numpy.ndarray
 
     """
-    n_row = prediction_3d_grid.size(0)
-    n_col = prediction_3d_grid.size(0) * prediction_3d_grid.size(1) * prediction_3d_grid.size(2)
-    prediction_3d = prediction_3d_grid.reshape(n_col, -1)
+    n_row = aggregate_prediction_2d.size(0)
 
-    aggregate_prediction_2d = aggregate_fn(prediction_3d.unsqueeze(-1)).squeeze()
-    aggregate_prediction_2d = aggregate_prediction_2d.reshape(n_row, prediction_3d_grid.size(1), prediction_3d_grid.size(2))
-
-    fig, ax = plt.subplots(n_row, 3, figsize=(5 * n_row, 5 * n_row))
+    fig, ax = plt.subplots(n_row, 5, figsize=(5 * n_row, 5 * n_row))
     cmap = 'turbo'
     title_fontsize = 16
     cbar_fontsize = 12
@@ -141,10 +137,12 @@ def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d_grid, aggre
         groundtruth = dataset.isel(time=i)[target_key].values
         pred = aggregate_prediction_2d[i].numpy()
         difference = groundtruth - pred
+        q025 = aggregate_prediction_2d_q025[i]
+        q075 = aggregate_prediction_2d_q975[i]
         vmin = np.minimum(groundtruth, pred).min()
         vmax = np.maximum(groundtruth, pred).max()
         diffmax = np.abs(difference).max()
-        rmse = round(np.sqrt(np.mean(difference ** 2)), 4)
+        rmse = np.round(np.sqrt(np.mean(difference ** 2)), 4)
 
         im0 = ax[i, 0].imshow(groundtruth, cmap=cmap, vmin=vmin, vmax=vmax)
         cbar = colorbar(im0)
@@ -162,13 +160,25 @@ def plot_aggregate_2d_predictions(dataset, target_key, prediction_3d_grid, aggre
         cbar = colorbar(im2)
         cbar.ax.tick_params(labelsize=cbar_fontsize)
         ax[i, 2].axis('off')
-        ax[i, 2].set_title(f'Difference - RMSE {rmse}', fontsize=title_fontsize)
+        ax[i, 2].set_title(f'Difference - RMSE {rmse:.2f}', fontsize=title_fontsize)
 
+        im3 = ax[i, 3].imshow(q025, cmap=cmap, vmin=vmin, vmax=vmax)
+        cbar = colorbar(im3)
+        cbar.ax.tick_params(labelsize=cbar_fontsize)
+        ax[i, 3].axis('off')
+        ax[i, 3].set_title(f'2.5% quantile - Time step {i}', fontsize=title_fontsize)
+
+        im3 = ax[i, 4].imshow(q075, cmap=cmap, vmin=vmin, vmax=vmax)
+        cbar = colorbar(im3)
+        cbar.ax.tick_params(labelsize=cbar_fontsize)
+        ax[i, 4].axis('off')
+        ax[i, 4].set_title(f'97.5% quantile - Time step {i}', fontsize=title_fontsize)
     plt.tight_layout()
     return fig, ax
 
 
-def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, prediction_3d_grid):
+def plot_vertical_prediction_slice(dataset, lat_idx, time_idx,
+                                   groundtruth_key, prediction_3d_grid, prediction_3d_grid_q025, prediction_3d_grid_q975):
     """Plots lon/alt slice of 3D prediction next to groundtruth, difference and RMSE as a function of height
 
     Args:
@@ -187,6 +197,8 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
     lon = dataset.lon.values
 
     predicted_slice = prediction_3d_grid[time_idx, lat_idx]
+    predicted_slice_q025 = prediction_3d_grid_q025[time_idx, lat_idx]
+    predicted_slice_q975 = prediction_3d_grid_q975[time_idx, lat_idx]
     groundtruth_slice = dataset.isel(lat=lat_idx, time=time_idx)[groundtruth_key].values.T
 
     difference = groundtruth_slice - predicted_slice.numpy()
@@ -197,7 +209,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
     vmax = max(groundtruth_slice.max(), predicted_slice.max())
     diffmax = np.abs(difference).max()
 
-    fig, ax = plt.subplots(4, 1, figsize=(10, 18))
+    fig, ax = plt.subplots(6, 1, figsize=(10, 30))
     cmap = 'turbo'
     n_x_ticks = 10
     n_y_ticks = 4
@@ -221,7 +233,17 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
     cbar.ax.tick_params(labelsize=labels_fontsize)
     ax[2].set_title('Difference', fontsize=title_fontsize)
 
-    for i in range(3):
+    im3 = ax[3].imshow(predicted_slice_q025.T, cmap=cmap, vmin=vmin, vmax=vmax)
+    cbar = colorbar(im3)
+    cbar.ax.tick_params(labelsize=labels_fontsize)
+    ax[3].set_title('2.5% quantile', fontsize=title_fontsize)
+
+    im3 = ax[4].imshow(predicted_slice_q975.T, cmap=cmap, vmin=vmin, vmax=vmax)
+    cbar = colorbar(im3)
+    cbar.ax.tick_params(labelsize=labels_fontsize)
+    ax[4].set_title('97.5% quantile', fontsize=title_fontsize)
+
+    for i in range(5):
         ax[i].set_xticks(range(0, len(lon), len(lon) // n_x_ticks))
         ax[i].set_xticklabels(np.round(lon[::len(lon) // n_x_ticks], 1), fontsize=ticks_fontsize, rotation=90)
         ax[i].set_yticks(range(0, len(h), len(h) // n_y_ticks))
@@ -229,12 +251,12 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
         ax[i].set_xlabel('longitude', fontsize=labels_fontsize)
         ax[i].set_ylabel('altitude', fontsize=labels_fontsize)
 
-    ax[3].plot(h, np.sqrt(np.mean(squared_error, axis=0)), '--.', label=f'RMSE={total_rmse}')
-    ax[3].set_yscale('log')
-    ax[3].grid(alpha=0.5)
-    ax[3].set_xlabel('altitude', fontsize=labels_fontsize)
-    ax[3].set_ylabel('RMSE', fontsize=labels_fontsize)
-    ax[3].set_title("RMSE profile", fontsize=title_fontsize)
+    ax[5].plot(h, np.sqrt(np.mean(squared_error, axis=0)), '--.', label=f'RMSE={total_rmse:.2f}')
+    ax[5].set_yscale('log')
+    ax[5].grid(alpha=0.5)
+    ax[5].set_xlabel('altitude', fontsize=labels_fontsize)
+    ax[5].set_ylabel('RMSE', fontsize=labels_fontsize)
+    ax[5].set_title("RMSE profile", fontsize=title_fontsize)
 
     plt.legend(fontsize=labels_fontsize)
     plt.tight_layout()
@@ -242,7 +264,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx, groundtruth_key, 
 
 
 def plot_vertical_prediction_profiles(dataset, time_idx, latlon_indices,
-                                      groundtruth_key, prediction_3d_grid, prediction_3d_grid_std):
+                                      groundtruth_key, prediction_3d_grid, prediction_3d_grid_q025, prediction_3d_grid_q975):
     """Plots vertical predicted vertical profiles with uncertainty and groundtruth
     at specified lat/lon
 
@@ -266,9 +288,9 @@ def plot_vertical_prediction_profiles(dataset, time_idx, latlon_indices,
     for i, (lat_idx, lon_idx) in enumerate(latlon_indices):
         h = dataset.isel(lat=lat_idx, time=time_idx, lon=lon_idx).height.values
         predicted_profile = prediction_3d_grid[time_idx, lat_idx, lon_idx]
-        predicted_profile_std = prediction_3d_grid_std[time_idx, lat_idx, lon_idx]
-        lower_bound = predicted_profile - predicted_profile_std
-        upper_bound = predicted_profile + predicted_profile_std
+        lower_bound = prediction_3d_grid_q025[time_idx, lat_idx, lon_idx]
+        upper_bound = prediction_3d_grid_q975[time_idx, lat_idx, lon_idx]
+
         groundtruth_profile = dataset.isel(lat=lat_idx,
                                            lon=lon_idx,
                                            time=time_idx)[groundtruth_key].values.flatten()
@@ -277,7 +299,7 @@ def plot_vertical_prediction_profiles(dataset, time_idx, latlon_indices,
 
         ax[i].plot(groundtruth_profile, h, label='Groundtruth', color='cornflowerblue')
         ax[i].plot(predicted_profile, h, label='Prediction', color='tomato')
-        ax[i].fill_betweenx(x1=lower_bound, x2=upper_bound, y=h, color='tomato', alpha=0.3, label=r'$\pm\sigma$')
+        ax[i].fill_betweenx(x1=lower_bound, x2=upper_bound, y=h, color='tomato', alpha=0.3, label='95% confidence')
         ax[i].set_xlabel(r'$b_{ext}$ $(m^{-1})$', fontsize=labels_fontsize)
         ax[i].set_ylabel('Altitude', rotation=90, fontsize=labels_fontsize)
         ax[i].grid(alpha=0.5)

@@ -31,7 +31,7 @@ def main(args, cfg):
     data = migrate_to_device(data=data, device=device)
 
     # Instantiate model
-    model = make_model(cfg=cfg, data=data)
+    model = make_model(cfg=cfg, data=data).to(device)
     logging.info(f"{model}")
 
     # Fit model
@@ -64,9 +64,8 @@ def make_model(cfg, data):
     # Define kernel
     time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
     latlon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[2, 3]))
-    covariates_3d_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[4, 5]))
-    covariates_2d_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[6, 7]))
-    kernel = time_kernel * latlon_kernel + covariates_3d_kernel + covariates_2d_kernel
+    P_relhum_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[4, 5]))
+    kernel = time_kernel * latlon_kernel + P_relhum_kernel
 
     # Fix initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
@@ -82,7 +81,7 @@ def make_model(cfg, data):
                                aggregate_fn=trpz,
                                kernel=kernel,
                                fit_intercept=cfg['model']['fit_intercept'])
-    return model.to(device)
+    return model
 
 
 def fit(model, data, cfg):
@@ -162,9 +161,9 @@ def fit(model, data, cfg):
 
 def predict(model, data, cfg):
     # Initialize empty tensor
-    prediction_3d = torch.zeros_like(data.h_by_column_std)
+    prediction_3d_means = torch.zeros_like(data.h_by_column_std)
+    prediction_3d_stddevs = torch.zeros_like(data.h_by_column_std)
     h_stddev = data.h_by_column.std()
-    n_MC_samples = cfg['evaluation']['n_samples']
 
     # Setup index iteration and progress bar
     indices = torch.arange(len(data.x_by_column_std)).to(device)
@@ -180,21 +179,29 @@ def predict(model, data, cfg):
         for idx in indices.split(batch_size):
             # Predict on standardized 3D covariates
             qf_by_column = model(data.x_by_column_std[idx])
-            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=n_MC_samples)
-            fs = fs.add(qf_by_column.mean)
-            prediction = model.transform(fs).div(h_stddev)
-            prediction = prediction.mul(torch.exp(-lbda * data.h_by_column_std[idx])).mean(dim=0)
 
             # Register in grid
-            prediction_3d[idx] = prediction
+            prediction_3d_means[idx] = qf_by_column.mean - lbda * data.h_by_column_std[idx]
+            prediction_3d_stddevs[idx] = qf_by_column.stddev
 
             # Update progress bar
             batch_bar.suffix = f"{idx[-1]}/{n_samples} columns"
             batch_bar.next()
 
+        # Make up for height standardization in integration
+        prediction_3d_means.sub_(torch.log(h_stddev))
+
+        # Rescale predictions by τ/∫φdh
+        def trpz(grid):
+            aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
+            return aggregated_grid
+        φ = torch.exp(prediction_3d_means + 0.5 * prediction_3d_stddevs.square())
+        aggregate_prediction_2d = trpz(φ.unsqueeze(-1)).squeeze()
+        correction = torch.log(data.z) - torch.log(aggregate_prediction_2d)
+        prediction_3d_means.add_(correction.unsqueeze(-1))
+
         # Make distribution
-        alpha, beta = model.reparametrize(prediction_3d)
-        prediction_3d_dist = torch.distributions.Gamma(alpha, beta)
+        prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means, prediction_3d_stddevs)
     return prediction_3d_dist
 
 
@@ -211,6 +218,7 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
     # Dump plots in output dir
     if plot:
         dump_plots(cfg=cfg,
+                   model=model,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
                    aggregate_fn=trpz,
