@@ -15,7 +15,7 @@ def dump_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn, output_
         yaml.dump(scores, f)
 
 
-def dump_plots(cfg, model, dataset, prediction_3d_dist, aggregate_fn, output_dir):
+def dump_plots(cfg, dataset, prediction_3d_dist, alpha, aggregate_fn, output_dir):
     # Reshape prediction as (time, lat, lon, lev) grids for visualization
     prediction_3d_grid = prediction_3d_dist.mean.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
     prediction_3d_grid_q025 = prediction_3d_dist.icdf(torch.tensor(0.025)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
@@ -28,7 +28,7 @@ def dump_plots(cfg, model, dataset, prediction_3d_dist, aggregate_fn, output_dir
     aggregate_prediction_2d = aggregate_prediction_2d.reshape(prediction_3d_grid.size(0),
                                                               prediction_3d_grid.size(1),
                                                               prediction_3d_grid.size(2))
-    alpha = model.shape.detach()
+
     theta = aggregate_prediction_2d.div(alpha)
     aggregate_prediction_2d_dist = gamma(a=alpha, scale=theta)
     aggregate_prediction_2d_q025 = aggregate_prediction_2d_dist.ppf(0.025)

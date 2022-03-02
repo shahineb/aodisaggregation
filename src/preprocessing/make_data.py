@@ -30,6 +30,8 @@ field_names = ['dataset',
                'y_std',
                'z',
                'z_std',
+               'z_smooth',
+               'z_smooth_std',
                'gt_by_column',
                'h_by_column',
                'h_by_column_std',
@@ -69,7 +71,7 @@ def make_data(cfg, include_2d=False):
         y_grid_std, y_std = _make_y_tensors(cfg, dataset, standard_dataset)
 
     # Make 2D aggregate target tensors
-    z_grid_std, z_grid, z_std, z = _make_z_tensors(cfg, dataset, standard_dataset)
+    z_grid_std, z_grid, z_std, z, z_smooth_std, z_smooth = _make_z_tensors(cfg, dataset, standard_dataset)
 
     # Make 3D groundtruth tensor
     gt_grid, gt_by_column = _make_groundtruth_tensors(cfg, dataset, standard_dataset)
@@ -85,6 +87,8 @@ def make_data(cfg, include_2d=False):
               'x_std': x_std,
               'z': z,
               'z_std': z_std,
+              'z_smooth': z_smooth,
+              'z_smooth_std': z_smooth_std,
               'gt_by_column': gt_by_column,
               'h_by_column': h_by_column,
               'h_by_column_std': h_by_column_std,
@@ -208,6 +212,15 @@ def _make_z_tensors(cfg, dataset, standard_dataset):
             - (time * lat * lon) non-standardized tensor
             - Used for fitting
 
+        `z_smooth_std`:
+            - (time * lat * lon) standardized tensor
+            - Used for rescaling
+
+        `z_smooth`:
+            - (time * lat * lon) non-standardized tensor
+            - Used for rescaling
+
+
     Returns:
         type: torch.Tensor, torch.Tensor
 
@@ -215,11 +228,15 @@ def _make_z_tensors(cfg, dataset, standard_dataset):
     # Convert into pytorch tensors
     z_grid_std = make_2d_tensor(dataset=standard_dataset, variable_key=cfg['dataset']['target'])
     z_grid = make_2d_tensor(dataset=dataset, variable_key=cfg['dataset']['target'])
+    z_smooth_grid_std = make_2d_tensor(dataset=standard_dataset, variable_key=cfg['dataset']['smoothed_target'])
+    z_smooth_grid = make_2d_tensor(dataset=dataset, variable_key=cfg['dataset']['smoothed_target'])
 
     # Reshape tensors
     z_std = z_grid_std.view(-1)
     z = z_grid.view(-1)
-    return z_grid_std, z_grid, z_std, z
+    z_smooth_std = z_smooth_grid_std.view(-1)
+    z_smooth = z_smooth_grid.view(-1)
+    return z_grid_std, z_grid, z_std, z, z_smooth_std, z_smooth
 
 
 def _make_groundtruth_tensors(cfg, dataset, standard_dataset):

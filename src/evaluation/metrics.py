@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import pearsonr
 
 
-def compute_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn):
+def compute_scores(prediction_3d_dist, groundtruth_3d, targets_2d, aggregate_fn):
     """Computes prediction scores
 
     Args:
@@ -16,10 +16,14 @@ def compute_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn):
         type: Description of returned object.
 
     """
+    # Extract posterior mean prediction
+    prediction_3d = prediction_3d_dist.mean
+
     # Compute metrics over raw predictions
     scores_2d = compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn)
     scores_3d_isotropic = compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d)
     scores_3d_vertical = compute_3d_vertical_metrics(prediction_3d, groundtruth_3d)
+    scores_3d_probabilistic = compute_3d_probabilistic_metrics(prediction_3d_dist, groundtruth_3d)
 
     # Compute metrics over standardized predictions
     sigma_2d = targets_2d.std()
@@ -31,7 +35,8 @@ def compute_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn):
     # Encapsulate scores into output dictionnary
     output = {'raw': {'2d': scores_2d,
                       '3d': {'isotropic': scores_3d_isotropic,
-                             'vertical': scores_3d_vertical}
+                             'vertical': scores_3d_vertical,
+                             'probabilistic': scores_3d_probabilistic}
                       },
 
               'std': {'2d': std_scores_2d,
@@ -168,6 +173,24 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
               'bias50': bias50.item(),
               'bias90': bias90.item()}
     return output
+
+
+def compute_3d_probabilistic_metrics(prediction_3d_dist, groundtruth_3d):
+    """Computes prediction scores between 3D+t prediction distribution and 3D+t unobserved groundtruth.
+    Metrics are computed for vertical profiles across all dimensions.
+
+    Args:
+        prediction_3d_dist (torch.distributions.Distribution): (time * lat * lon, lev)
+        groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
+
+    Returns:
+        type: dict[float]
+
+    """
+    # Compute average loglikelihood of groundtruth under predicted posterior distribution
+    ll = prediction_3d_dist.log_prob(groundtruth_3d).mean()
+
+    # Compute 95% calibration score
 
 
 def spearman_correlation(x, y):

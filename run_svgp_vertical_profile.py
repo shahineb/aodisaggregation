@@ -197,7 +197,7 @@ def predict(model, data, cfg):
             return aggregated_grid
         φ = torch.exp(prediction_3d_means + 0.5 * prediction_3d_stddevs.square())
         aggregate_prediction_2d = trpz(φ.unsqueeze(-1)).squeeze()
-        correction = torch.log(data.z) - torch.log(aggregate_prediction_2d)
+        correction = torch.log(data.z_smooth) - torch.log(aggregate_prediction_2d)
         prediction_3d_means.add_(correction.unsqueeze(-1))
 
         # Make distribution
@@ -218,9 +218,9 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
     # Dump plots in output dir
     if plot:
         dump_plots(cfg=cfg,
-                   model=model,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
+                   alpha=model.shape.detach(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")

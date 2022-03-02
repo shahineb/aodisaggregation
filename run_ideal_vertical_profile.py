@@ -46,7 +46,13 @@ def migrate_to_device(data, device):
 def predict(data, cfg):
     # Predict idealized exponential height profile
     lbda = cfg['model']['lbda']
-    prediction_3d = 0.000009 * torch.exp(-lbda * data.h_by_column_std)
+    h_stddev = data.h_by_column.std()
+    prediction_3d = torch.exp(-lbda * data.h_by_column_std)
+
+    # Rescale predictions by τ/∫φdh
+    aggregate_prediction = h_stddev * (torch.exp(-lbda * data.h_by_column_std[:, -1]) - torch.exp(-lbda * data.h_by_column_std[:, 0])) / lbda
+    correction = data.z_smooth / aggregate_prediction
+    prediction_3d.mul_(correction.unsqueeze(-1))
 
     # Make distribution
     noise = cfg['evaluation']['noise']
@@ -65,6 +71,7 @@ def evaluate(prediction_3d_dist, data, cfg, plot, output_dir):
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
+                   alpha=1,
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
