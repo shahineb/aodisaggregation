@@ -226,7 +226,7 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
         logging.info("Dumped plots")
 
     # Dump scores in output dir
-    dump_scores(prediction_3d=prediction_3d_dist.mean.cpu(),
+    dump_scores(prediction_3d_dist=prediction_3d_dist,
                 groundtruth_3d=data.gt_by_column,
                 targets_2d=data.z.cpu(),
                 aggregate_fn=trpz,

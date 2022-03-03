@@ -8,8 +8,8 @@ from src.evaluation import metrics
 from src.evaluation import visualization
 
 
-def dump_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn, output_dir):
-    scores = metrics.compute_scores(prediction_3d, groundtruth_3d, targets_2d, aggregate_fn)
+def dump_scores(prediction_3d_dist, groundtruth_3d, targets_2d, aggregate_fn, output_dir):
+    scores = metrics.compute_scores(prediction_3d_dist, groundtruth_3d, targets_2d, aggregate_fn)
     dump_path = os.path.join(output_dir, 'scores.metrics')
     with open(dump_path, 'w') as f:
         yaml.dump(scores, f)

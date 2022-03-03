@@ -156,7 +156,7 @@ def plot_aggregate_2d_predictions(dataset, target_key, aggregate_prediction_2d,
         ax[i, 1].axis('off')
         ax[i, 1].set_title(f'Prediction - Time step {i}', fontsize=title_fontsize)
 
-        im2 = ax[i, 2].imshow(difference, cmap='bwr', vmin=-diffmax, vmax=diffmax)
+        im2 = ax[i, 2].imshow(difference, cmap='seismic', vmin=-diffmax, vmax=diffmax)
         cbar = colorbar(im2)
         cbar.ax.tick_params(labelsize=cbar_fontsize)
         ax[i, 2].axis('off')
@@ -228,7 +228,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx,
     cbar.ax.tick_params(labelsize=labels_fontsize)
     ax[1].set_title('Prediction', fontsize=title_fontsize)
 
-    im2 = ax[2].imshow(difference.T, cmap='bwr', vmin=-diffmax, vmax=diffmax)
+    im2 = ax[2].imshow(difference.T, cmap='seismic', vmin=-diffmax, vmax=diffmax)
     cbar = colorbar(im2)
     cbar.ax.tick_params(labelsize=labels_fontsize)
     ax[2].set_title('Difference', fontsize=title_fontsize)

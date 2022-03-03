@@ -7,7 +7,7 @@ def compute_scores(prediction_3d_dist, groundtruth_3d, targets_2d, aggregate_fn)
     """Computes prediction scores
 
     Args:
-        prediction_3d (torch.Tensor): (time * lat * lon, lev)
+        prediction_3d_dist (torch.distributions.Distribution): (time * lat * lon, lev)
         groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
         targets_2d (torch.Tensor): (time * lat * lon)
         aggregate_fn (callable): callable used to aggregate (time * lat * lon, lev, -1) -> (time * lat * lon, -1)
@@ -17,7 +17,7 @@ def compute_scores(prediction_3d_dist, groundtruth_3d, targets_2d, aggregate_fn)
 
     """
     # Extract posterior mean prediction
-    prediction_3d = prediction_3d_dist.mean
+    prediction_3d = prediction_3d_dist.mean.cpu()
 
     # Compute metrics over raw predictions
     scores_2d = compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn)
@@ -188,9 +188,19 @@ def compute_3d_probabilistic_metrics(prediction_3d_dist, groundtruth_3d):
 
     """
     # Compute average loglikelihood of groundtruth under predicted posterior distribution
-    ll = prediction_3d_dist.log_prob(groundtruth_3d).mean()
+    eps = torch.finfo(torch.float64).eps
+    ll = prediction_3d_dist.log_prob(groundtruth_3d.clip(min=eps)).mean()
 
     # Compute 95% calibration score
+    lb = prediction_3d_dist.icdf(torch.tensor(0.025)).cpu()
+    ub = prediction_3d_dist.icdf(torch.tensor(0.975)).cpu()
+    mask = (groundtruth_3d >= lb) & (groundtruth_3d <= ub)
+    calib95 = mask.float().mean()
+
+    # Encapsulate results in output dictionnary
+    output = {'ll': ll.item(),
+              'calib95': calib95.item()}
+    return output
 
 
 def spearman_correlation(x, y):
