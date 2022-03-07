@@ -25,7 +25,7 @@ dataset:
 # MODEL SPECIFICATIONS
 model:
   # Idealized profile heigthscale parameter
-  lbda: 1.8
+  lbda: 1.0055
 
 
 

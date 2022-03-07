@@ -11,6 +11,7 @@ dataset:
   3d_covariates:
     - pressure_as_normal
     - relhum_as_normal
+    - st_as_normal
     # - ALFA_AER_533nm_as_normal
     - height
 
@@ -34,7 +35,7 @@ model:
   n_inducing_points: 60
 
   # Idealized profile heigthscale parameter
-  lbda: 1.8
+  lbda: 1.0055
 
   # Weights initialization seed
   seed: 42

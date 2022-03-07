@@ -64,8 +64,19 @@ def make_model(cfg, data):
     # Define kernel
     time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
     latlon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[2, 3]))
-    P_relhum_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[4, 5]))
-    kernel = time_kernel * latlon_kernel + P_relhum_kernel
+
+    # P_kernel = kernels.ScaleKernel(kernels.RBFKernel(ard_num_dims=1, active_dims=[4]))
+    # relhum_kernel = kernels.ScaleKernel(kernels.RBFKernel(ard_num_dims=1, active_dims=[5]))
+    # st_kernel = kernels.ScaleKernel(kernels.RBFKernel(ard_num_dims=1, active_dims=[6]))
+    # P_relhum_st_kernel = P_kernel + relhum_kernel + st_kernel
+
+    # P_kernel = kernels.ScaleKernel(kernels.RBFKernel(ard_num_dims=1, active_dims=[4]))
+    # relhum_kernel = kernels.RBFKernel(ard_num_dims=1, active_dims=[5])
+    # st_kernel = kernels.RBFKernel(ard_num_dims=1, active_dims=[6])
+    # P_relhum_st_kernel = P_kernel * relhum_kernel * st_kernel
+
+    P_relhum_st_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=3, active_dims=[4, 5, 6]))
+    kernel = time_kernel * latlon_kernel + P_relhum_st_kernel
 
     # Fix initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
@@ -202,6 +213,11 @@ def predict(model, data, cfg):
 
         # Make distribution
         prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means, prediction_3d_stddevs)
+
+        ### DIRTY TRICK TO REMOVE
+        # sigma1 = 6 * prediction_3d_stddevs
+        # mu1 = prediction_3d_means + (prediction_3d_stddevs.square() - sigma1.square()) / 2
+        # prediction_3d_dist = torch.distributions.LogNormal(mu1, sigma1)
     return prediction_3d_dist
 
 
