@@ -33,7 +33,7 @@ model:
 # EVALUATION
 evaluation:
   # Fixed white noise term to make a distribution (not important)
-  noise: 0.00001
+  noise: 0.0000024
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20

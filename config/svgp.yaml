@@ -11,7 +11,7 @@ dataset:
   3d_covariates:
     - pressure_as_normal
     - relhum_as_normal
-    - st_as_normal
+    # - st_as_normal
     # - ALFA_AER_533nm_as_normal
     - height
 
@@ -54,7 +54,7 @@ training:
   # Random seed for MC sampling
   seed: 42
 
-  # Number of MC samples
+  # Number of MC samples used for reparametrization trick
   n_samples: 1
 
   # Batch size
@@ -71,6 +71,9 @@ evaluation:
 
   # Number of MC samples used for posterior mean estimation
   n_samples: 1000
+
+  # Variance calibration multiplier
+  variance_multiplier: 6.
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20
