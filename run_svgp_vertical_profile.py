@@ -1,7 +1,7 @@
 """
 Description : Runs sparse variational GP aerosol vertical profile reconstruction
 
-Usage: run_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_lognormal_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -18,7 +18,7 @@ from progress.bar import Bar
 import torch
 from gpytorch import kernels
 from src.preprocessing import make_data
-from src.models import AggregateGammaSVGP
+from src.models import AggregateLogNormalSVGP
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
 
 
@@ -77,11 +77,11 @@ def make_model(cfg, data):
     inducing_points = lowaltitude_x_std[rdm_idx].float()
 
     # Instantiate model
-    model = AggregateGammaSVGP(inducing_points=inducing_points,
-                               transform=torch.exp,
-                               aggregate_fn=trpz,
-                               kernel=kernel,
-                               fit_intercept=cfg['model']['fit_intercept'])
+    model = AggregateLogNormalSVGP(inducing_points=inducing_points,
+                                   transform=torch.exp,
+                                   aggregate_fn=trpz,
+                                   kernel=kernel,
+                                   fit_intercept=cfg['model']['fit_intercept'])
     return model
 
 
@@ -100,7 +100,6 @@ def fit(model, data, cfg):
 
     # Extract useful variables
     lbda = cfg['model']['lbda']
-    n_MC_samples = cfg['training']['n_samples']
     n_epochs = cfg['training']['n_epochs']
     batch_size = cfg['training']['batch_size']
     n_samples = len(data.z)
@@ -123,22 +122,21 @@ def fit(model, data, cfg):
             qf_by_column = model(x_by_column_std)
 
             # Draw a bunch of samples from the variational posterior
-            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=n_MC_samples)
-            fs = fs.add(qf_by_column.mean)
+            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
+            fs = fs.add(qf_by_column.mean).squeeze()
 
             # Transform into aggregate predictions
             predicted_means = model.transform(fs)
-            predicted_means_3d = predicted_means.reshape((n_MC_samples,) + h_by_column_std.shape)
-            predicted_means_3d = predicted_means_3d.mul(torch.exp(-lbda * h_by_column_std))
+            predicted_means_3d = predicted_means.mul(torch.exp(-lbda * h_by_column_std))
             aggregate_predicted_means_2d = -torch.trapz(y=predicted_means_3d.unsqueeze(-1),
-                                                        x=h_by_column_std.tile((n_MC_samples, 1, 1)).unsqueeze(-1),
+                                                        x=h_by_column_std.unsqueeze(-1),
                                                         dim=-2).squeeze()
 
             # Reparametrize into gamma logprob
-            alpha, beta = model.reparametrize(mu=aggregate_predicted_means_2d)
-            aggregate_prediction_2d = torch.distributions.gamma.Gamma(alpha, beta)
-            prob_gamma = aggregate_prediction_2d.log_prob(z.tile((n_MC_samples, 1))).exp()
-            ell_MC = torch.log(prob_gamma.mean(dim=0)).mean()
+            loc, scale = model.reparametrize(mu=aggregate_predicted_means_2d)
+            aggregate_prediction_2d = torch.distributions.LogNormal(loc, scale)
+            prob_gamma = aggregate_prediction_2d.log_prob(z)
+            ell_MC = prob_gamma.mean()
 
             # Compute KL term
             kl_divergence = model.variational_strategy.kl_divergence().div(n_samples)
@@ -202,12 +200,12 @@ def predict(model, data, cfg):
         prediction_3d_means.add_(correction.unsqueeze(-1))
 
         # # Make distribution
-        # prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means, prediction_3d_stddevs)
+        prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means, prediction_3d_stddevs)
 
         # Recalibrate variance
-        sigma1 = cfg['evaluation']['variance_multiplier'] * prediction_3d_stddevs
-        mu1 = prediction_3d_means + (prediction_3d_stddevs.square() - sigma1.square()) / 2
-        prediction_3d_dist = torch.distributions.LogNormal(mu1, sigma1)
+        # sigma1 = cfg['evaluation']['variance_multiplier'] * prediction_3d_stddevs
+        # mu1 = prediction_3d_means + (prediction_3d_stddevs.square() - sigma1.square()) / 2
+        # prediction_3d_dist = torch.distributions.LogNormal(mu1, sigma1)
     return prediction_3d_dist
 
 
@@ -226,7 +224,7 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
-                   alpha=model.shape.detach(),
+                   alpha=model.sigma.detach(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
