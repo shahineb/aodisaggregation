@@ -1,7 +1,7 @@
 """
 Description : Runs sparse variational GP aerosol vertical profile reconstruction
 
-Usage: run_lognormal_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -72,7 +72,7 @@ def make_model(cfg, data):
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Initialize inducing points at low altitude levels
-    lowaltitude_x_std = data.x_std[data.x_std[:, -1] < -0.8]
+    lowaltitude_x_std = data.x_std[data.x_std[:, -1] < -cfg['model']['lbda']]
     rdm_idx = torch.randperm(len(lowaltitude_x_std))[:cfg['model']['n_inducing_points']]
     inducing_points = lowaltitude_x_std[rdm_idx].float()
 
