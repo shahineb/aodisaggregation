@@ -20,6 +20,8 @@ def dump_plots(cfg, dataset, prediction_3d_dist, bext_dist, alpha, aggregate_fn,
     prediction_3d_grid = prediction_3d_dist.mean.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
     prediction_3d_grid_q025 = prediction_3d_dist.icdf(torch.tensor(0.025)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
     prediction_3d_grid_q975 = prediction_3d_dist.icdf(torch.tensor(0.975)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
+    bext = bext_dist.sample().view(-1, len(dataset.time), len(dataset.lat), len(dataset.lon), len(dataset.lev)).cpu()
+    bext_q025, bext_q975 = torch.quantile(bext, q=torch.tensor([0.025, 0.975]), dim=0).cpu()
 
     # Compute aggregated prediction shaped as (time, lat, lon) grids for visualization
     n_columns = prediction_3d_grid.size(0) * prediction_3d_grid.size(1) * prediction_3d_grid.size(2)
@@ -61,7 +63,9 @@ def dump_plots(cfg, dataset, prediction_3d_dist, bext_dist, alpha, aggregate_fn,
                                                      groundtruth_key=cfg['dataset']['groundtruth'],
                                                      prediction_3d_grid=prediction_3d_grid,
                                                      prediction_3d_grid_q025=prediction_3d_grid_q025,
-                                                     prediction_3d_grid_q975=prediction_3d_grid_q975)
+                                                     prediction_3d_grid_q975=prediction_3d_grid_q975,
+                                                     bext_q025=bext_q025,
+                                                     bext_q975=bext_q975)
     plt.savefig(dump_path)
     plt.close()
 
@@ -76,7 +80,9 @@ def dump_plots(cfg, dataset, prediction_3d_dist, bext_dist, alpha, aggregate_fn,
                                                         groundtruth_key=cfg['dataset']['groundtruth'],
                                                         prediction_3d_grid=prediction_3d_grid,
                                                         prediction_3d_grid_q025=prediction_3d_grid_q025,
-                                                        prediction_3d_grid_q975=prediction_3d_grid_q975)
+                                                        prediction_3d_grid_q975=prediction_3d_grid_q975,
+                                                        bext_q025=bext_q025,
+                                                        bext_q975=bext_q975)
     plt.savefig(dump_path)
     plt.close()
 
