@@ -18,7 +18,7 @@ from progress.bar import Bar
 import torch
 from gpytorch import kernels
 from src.preprocessing import make_data
-from src.models import AggregateLogNormalSVGP
+from src.models import AggregateGammaSVGP
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
 
 
@@ -39,10 +39,10 @@ def main(args, cfg):
     model = fit(model=model, data=data, cfg=cfg)
 
     # Run prediction
-    prediction_3d_dist = predict(model=model, data=data, cfg=cfg)
+    prediction_3d_dist, bext_dist = predict(model=model, data=data, cfg=cfg)
 
     # Run evaluation
-    evaluate(prediction_3d_dist=prediction_3d_dist, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+    evaluate(prediction_3d_dist=prediction_3d_dist, bext_dist=bext_dist, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def migrate_to_device(data, device):
@@ -77,11 +77,11 @@ def make_model(cfg, data):
     inducing_points = lowaltitude_x_std[rdm_idx].float()
 
     # Instantiate model
-    model = AggregateLogNormalSVGP(inducing_points=inducing_points,
-                                   transform=torch.exp,
-                                   aggregate_fn=trpz,
-                                   kernel=kernel,
-                                   fit_intercept=cfg['model']['fit_intercept'])
+    model = AggregateGammaSVGP(inducing_points=inducing_points,
+                               transform=torch.exp,
+                               aggregate_fn=trpz,
+                               kernel=kernel,
+                               fit_intercept=cfg['model']['fit_intercept'])
     return model
 
 
@@ -133,10 +133,10 @@ def fit(model, data, cfg):
                                                         dim=-2).squeeze()
 
             # Reparametrize into gamma logprob
-            loc, scale = model.reparametrize(mu=aggregate_predicted_means_2d)
-            aggregate_prediction_2d = torch.distributions.LogNormal(loc, scale)
-            prob_gamma = aggregate_prediction_2d.log_prob(z)
-            ell_MC = prob_gamma.mean()
+            alpha, beta = model.reparametrize(mu=aggregate_predicted_means_2d)
+            aggregate_prediction_2d = torch.distributions.gamma.Gamma(alpha, beta)
+            log_prob_gamma = aggregate_prediction_2d.log_prob(z)
+            ell_MC = log_prob_gamma.mean()
 
             # Compute KL term
             kl_divergence = model.variational_strategy.kl_divergence().div(n_samples)
@@ -199,17 +199,18 @@ def predict(model, data, cfg):
         correction = torch.log(data.z_smooth) - torch.log(aggregate_prediction_2d)
         prediction_3d_means.add_(correction.unsqueeze(-1))
 
-        # # Make distribution
+        # Make latent vertical profile φ distribution
         prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means, prediction_3d_stddevs)
 
-        # Recalibrate variance
-        # sigma1 = cfg['evaluation']['variance_multiplier'] * prediction_3d_stddevs
-        # mu1 = prediction_3d_means + (prediction_3d_stddevs.square() - sigma1.square()) / 2
-        # prediction_3d_dist = torch.distributions.LogNormal(mu1, sigma1)
-    return prediction_3d_dist
+        # Make bext observation model distribution
+        φ = prediction_3d_dist.sample((cfg['evaluation']['n_samples'],))
+        alpha_bext = torch.tensor(cfg['evaluation']['alpha_bext'])
+        beta_bext = alpha_bext.div(φ)
+        bext_dist = torch.distributions.Gamma(alpha_bext, beta_bext)
+    return prediction_3d_dist, bext_dist
 
 
-def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
+def evaluate(prediction_3d_dist, bext_dist, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
@@ -224,16 +225,19 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
-                   alpha=model.sigma.detach(),
+                   bext_dist=bext_dist,
+                   alpha=model.shape.detach(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
 
     # Dump scores in output dir
     dump_scores(prediction_3d_dist=prediction_3d_dist,
+                bext_dist=bext_dist,
                 groundtruth_3d=data.gt_by_column,
                 targets_2d=data.z.cpu(),
                 aggregate_fn=trpz,
+                calibration_seed=cfg['evaluation']['calibration_seed'],
                 output_dir=output_dir)
     logging.info("Dumped scores")
 

@@ -69,8 +69,8 @@ evaluation:
   # Number of MC samples used for posterior mean estimation
   n_samples: 1000
 
-  # Variance calibration multiplier
-  variance_multiplier: 6.
+  # bext observation model calibrated shape parameter
+  alpha_bext: 2.5
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20
@@ -88,6 +88,9 @@ evaluation:
 
   # Number of profils to plot
   n_profiles: 10
+
+  # Random seed used to select calibration profiles
+  calibration_seed: 5
 
   # Random seed to choose profiles
   seed: 5

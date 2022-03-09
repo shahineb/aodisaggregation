@@ -8,14 +8,14 @@ from src.evaluation import metrics
 from src.evaluation import visualization
 
 
-def dump_scores(prediction_3d_dist, groundtruth_3d, targets_2d, aggregate_fn, output_dir):
-    scores = metrics.compute_scores(prediction_3d_dist, groundtruth_3d, targets_2d, aggregate_fn)
+def dump_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed, output_dir):
+    scores = metrics.compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed)
     dump_path = os.path.join(output_dir, 'scores.metrics')
     with open(dump_path, 'w') as f:
         yaml.dump(scores, f)
 
 
-def dump_plots(cfg, dataset, prediction_3d_dist, alpha, aggregate_fn, output_dir):
+def dump_plots(cfg, dataset, prediction_3d_dist, bext_dist, alpha, aggregate_fn, output_dir):
     # Reshape prediction as (time, lat, lon, lev) grids for visualization
     prediction_3d_grid = prediction_3d_dist.mean.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
     prediction_3d_grid_q025 = prediction_3d_dist.icdf(torch.tensor(0.025)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
