@@ -10,8 +10,9 @@ dataset:
   # Variables to use as 3D covariates
   3d_covariates:
     - pressure_as_normal
+    - st_as_normal
     - relhum_as_normal
-    # - st_as_normal
+    - omega_as_normal
     # - ALFA_AER_533nm_as_normal
     - height
 
@@ -68,9 +69,10 @@ evaluation:
 
   # Number of MC samples used for bext posterior estimation
   n_samples: 256
+  # n_samples: 10
 
   # bext observation model calibrated shape parameter
-  alpha_bext: 0.4
+  alpha_bext: 0.42
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20

@@ -1,14 +1,14 @@
 import torch
 import numpy as np
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, gamma
 
 
-def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed):
+def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed, ideal):
     """Computes prediction scores
 
     Args:
-        prediction_3d_dist (torch.distributions.Distribution): (n_samples, time * lat * lon, lev)
-        bext_dist (torch.distributions.Distribution): (time * lat * lon, lev)
+        prediction_3d_dist (torch.distributions.Distribution): (time * lat * lon, lev)
+        bext_dist (torch.distributions.Distribution): (n_samples, time * lat * lon, lev)
         groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
         targets_2d (torch.Tensor): (time * lat * lon)
         aggregate_fn (callable): callable used to aggregate (time * lat * lon, lev, -1) -> (time * lat * lon, -1)
@@ -25,7 +25,8 @@ def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, ag
     scores_2d = compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn)
     scores_3d_isotropic = compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d)
     scores_3d_vertical = compute_3d_vertical_metrics(prediction_3d, groundtruth_3d)
-    scores_3d_probabilistic = compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed)
+    scores_3d_probabilistic = compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed, ideal)
+    # scores_3d_probabilistic = {}
 
     # Compute metrics over standardized predictions
     sigma_2d = targets_2d.std()
@@ -177,7 +178,7 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
     return output
 
 
-def compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed):
+def compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed, ideal):
     """Computes prediction scores between 3D+t prediction distribution and 3D+t unobserved groundtruth.
     Metrics are computed for vertical profiles across all dimensions.
 
@@ -185,6 +186,7 @@ def compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed
         bext_dist (torch.distributions.Distribution): (n_samples, time * lat * lon, lev)
         groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
         calibration_seed (int): seed to use to choose profiles for calibration (here we want to exclude them)
+        ideal (bool): if True, computes for idealized profile experiment (more efficient)
 
     Returns:
         type: dict[float]
@@ -196,13 +198,23 @@ def compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed
 
     # Compute average ELBO of groundtruth under predicted posterior distribution
     eps = torch.finfo(torch.float64).eps
-    gt = groundtruth_3d.clip(min=eps).unsqueeze(0).tile((bext_dist.mean.size(0), 1, 1))
-    log_prob = bext_dist.log_prob(gt)
-    elbo = log_prob.mean(dim=0)[~calib_idx].mean()
+    gt = groundtruth_3d.clip(min=eps)
+    if ideal:
+        # Actually reaches upper bound for ideal model, i.e. ll = elbo
+        elbo = bext_dist.log_prob(gt)[~calib_idx].mean()
+    else:
+        log_prob = bext_dist.log_prob(gt.unsqueeze(0).tile((bext_dist.mean.size(0), 1, 1)))
+        elbo = log_prob.mean(dim=0)[~calib_idx].mean()
 
     # Compute 95% calibration score
-    bext = bext_dist.sample()
-    lb, ub = torch.quantile(bext, q=torch.tensor([0.025, 0.975]), dim=0).cpu()
+    if ideal:
+        alpha = bext_dist.concentration
+        theta = bext_dist.mean.div(alpha)
+        bext_dist_scipy = gamma(a=alpha.numpy(), scale=theta.numpy())
+        lb, ub = torch.from_numpy(bext_dist_scipy.ppf(0.025)), torch.from_numpy(bext_dist_scipy.ppf(0.975))
+    else:
+        bext = bext_dist.sample()
+        lb, ub = torch.quantile(bext, q=torch.tensor([0.025, 0.975]), dim=0).cpu()
     mask = (groundtruth_3d >= lb) & (groundtruth_3d <= ub)
     calib95 = mask.float()[~calib_idx].mean()
 
@@ -212,7 +224,10 @@ def compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed
     for size in cr_sizes:
         q_lb = (1 - float(size)) / 2
         q_ub = 1 - q_lb
-        lb, ub = torch.quantile(bext, q=torch.tensor([q_lb, q_ub]), dim=0).cpu()
+        if ideal:
+            lb, ub = torch.from_numpy(bext_dist_scipy.ppf(q_lb)), torch.from_numpy(bext_dist_scipy.ppf(q_ub))
+        else:
+            lb, ub = torch.quantile(bext, q=torch.tensor([q_lb, q_ub]), dim=0).cpu()
         mask = (groundtruth_3d >= lb) & (groundtruth_3d <= ub)
         calibs.append(mask.float()[~calib_idx].mean().item())
     ICI = np.abs(np.asarray(calibs) - cr_sizes).mean().item()

@@ -8,20 +8,28 @@ from src.evaluation import metrics
 from src.evaluation import visualization
 
 
-def dump_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed, output_dir):
-    scores = metrics.compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed)
+def dump_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, output_dir, calibration_seed, ideal=False):
+    scores = metrics.compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed, ideal)
     dump_path = os.path.join(output_dir, 'scores.metrics')
     with open(dump_path, 'w') as f:
         yaml.dump(scores, f)
 
 
-def dump_plots(cfg, dataset, prediction_3d_dist, bext_dist, alpha, aggregate_fn, output_dir):
+def dump_plots(cfg, dataset, prediction_3d_dist, bext_dist, alpha, aggregate_fn, output_dir, ideal=False):
     # Reshape prediction as (time, lat, lon, lev) grids for visualization
     prediction_3d_grid = prediction_3d_dist.mean.view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
     prediction_3d_grid_q025 = prediction_3d_dist.icdf(torch.tensor(0.025)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
     prediction_3d_grid_q975 = prediction_3d_dist.icdf(torch.tensor(0.975)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
-    bext = bext_dist.sample().view(-1, len(dataset.time), len(dataset.lat), len(dataset.lon), len(dataset.lev)).cpu()
-    bext_q025, bext_q975 = torch.quantile(bext, q=torch.tensor([0.025, 0.975]), dim=0).cpu()
+    if ideal:
+        alpha_bext = bext_dist.concentration
+        theta_bext = 1 / bext_dist.rate
+        bext_dist_scipy = gamma(a=alpha_bext.numpy(), scale=theta_bext.numpy())
+        bext_q025 = torch.from_numpy(bext_dist_scipy.ppf(0.025)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
+        bext_q975 = torch.from_numpy(bext_dist_scipy.ppf(0.975)).view(len(dataset.time), len(dataset.lat), len(dataset.lon), -1).cpu()
+    else:
+        bext = bext_dist.sample().view(-1, len(dataset.time), len(dataset.lat), len(dataset.lon), len(dataset.lev)).cpu()
+        bext_q025, bext_q975 = torch.quantile(bext, q=torch.tensor([0.025, 0.975]), dim=0).cpu()
+    # bext_q025, bext_q975 = None, None
 
     # Compute aggregated prediction shaped as (time, lat, lon) grids for visualization
     n_columns = prediction_3d_grid.size(0) * prediction_3d_grid.size(1) * prediction_3d_grid.size(2)

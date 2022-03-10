@@ -27,10 +27,10 @@ def main(args, cfg):
     data = migrate_to_device(data=data, device=device)
 
     # Run prediction
-    prediction_3d_dist = predict(data=data, cfg=cfg)
+    prediction_3d_dist, bext_dist = predict(data=data, cfg=cfg)
 
     # Run evaluation
-    evaluate(prediction_3d_dist=prediction_3d_dist, data=data, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+    evaluate(prediction_3d_dist=prediction_3d_dist, bext_dist=bext_dist, data=data, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def migrate_to_device(data, device):
@@ -54,13 +54,17 @@ def predict(data, cfg):
     correction = data.z_smooth / aggregate_prediction
     prediction_3d.mul_(correction.unsqueeze(-1))
 
-    # Make distribution
+    # Make latent vertical profile dummy distribution
     noise = cfg['evaluation']['noise']
     prediction_3d_dist = torch.distributions.Normal(prediction_3d, noise)
-    return prediction_3d_dist
+
+    # Make bext observation model distribution
+    alpha_bext = torch.tensor(cfg['evaluation']['alpha_bext'])
+    bext_dist = torch.distributions.Gamma(alpha_bext, alpha_bext.div(prediction_3d))
+    return prediction_3d_dist, bext_dist
 
 
-def evaluate(prediction_3d_dist, data, cfg, plot, output_dir):
+def evaluate(prediction_3d_dist, bext_dist, data, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
@@ -71,16 +75,21 @@ def evaluate(prediction_3d_dist, data, cfg, plot, output_dir):
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
+                   bext_dist=bext_dist,
                    alpha=1,
                    aggregate_fn=trpz,
+                   ideal=True,
                    output_dir=output_dir)
         logging.info("Dumped plots")
 
     # Dump scores in output dir
     dump_scores(prediction_3d_dist=prediction_3d_dist,
+                bext_dist=bext_dist,
                 groundtruth_3d=data.gt_by_column,
                 targets_2d=data.z,
                 aggregate_fn=trpz,
+                ideal=True,
+                calibration_seed=cfg['evaluation']['calibration_seed'],
                 output_dir=output_dir)
     logging.info("Dumped scores")
 

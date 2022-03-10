@@ -213,7 +213,7 @@ def plot_vertical_prediction_slice(dataset, lat_idx, time_idx,
     vmax = max(groundtruth_slice.max(), predicted_slice.max())
     diffmax = np.abs(difference).max()
 
-    fig, ax = plt.subplots(8, 1, figsize=(10, 40))
+    fig, ax = plt.subplots(8, 1, figsize=(15, 40))
     cmap = 'turbo'
     n_x_ticks = 10
     n_y_ticks = 4
@@ -318,7 +318,6 @@ def plot_vertical_prediction_profiles(dataset, time_idx, latlon_indices,
         ax[i].plot(groundtruth_profile, h, label='Groundtruth', color='cornflowerblue')
         ax[i].plot(predicted_profile, h, label='Prediction', color='tomato')
         ax[i].fill_betweenx(x1=lower_bound_φ, x2=upper_bound_φ, y=h, color='tomato', alpha=0.3, label=r'$\varphi|\mathbf{\tau}$ 95% confidence')
-        # ax[i].fill_betweenx(x1=lower_bound_bext, x2=upper_bound_bext, y=h, color='sandybrown', alpha=0.3, label=r'$b_{ext}|\mathbf{\tau}$ 95% confidence')
         ax[i].fill_betweenx(x1=upper_bound_φ, x2=upper_bound_bext, y=h, color='sandybrown', alpha=0.3, label=r'$b_{ext}|\mathbf{\tau}$ 95% confidence')
         ax[i].fill_betweenx(x1=lower_bound_bext, x2=lower_bound_φ, y=h, color='sandybrown', alpha=0.3)
         ax[i].set_xlabel(r'$b_{ext}$ $(m^{-1})$', fontsize=labels_fontsize)
