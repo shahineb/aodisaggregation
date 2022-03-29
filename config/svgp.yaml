@@ -36,7 +36,7 @@ model:
   n_inducing_points: 60
 
   # Idealized profile heigthscale parameter
-  lbda: 1.0055
+  L: 0.8708489560412566
 
   # Weights initialization seed
   seed: 42
@@ -47,7 +47,7 @@ model:
 training:
   # Number of training epochs
   n_epochs: 2
-  # n_epochs: 6
+  # n_epochs: 8
 
   # Learning rate
   lr: 0.01
@@ -71,8 +71,11 @@ evaluation:
   n_samples: 256
   # n_samples: 10
 
-  # bext observation model calibrated shape parameter
-  alpha_bext: 0.42
+  # bext observation model calibrated scale parameter
+  sigma_ext: 2.120
+
+  # Number of test columns (to speed up probabilistic evaluation)
+  n_test_samples: 1000
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20
