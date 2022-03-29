@@ -39,10 +39,10 @@ def main(args, cfg):
     model = fit(model=model, data=data, cfg=cfg)
 
     # Run prediction
-    prediction_3d_dist = predict(model=model, data=data, cfg=cfg)
+    prediction_3d_dist, bext_dist = predict(model=model, data=data, cfg=cfg)
 
     # Run evaluation
-    evaluate(prediction_3d_dist=prediction_3d_dist, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+    evaluate(prediction_3d_dist=prediction_3d_dist, bext_dist=bext_dist, data=data, model=model, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def migrate_to_device(data, device):
@@ -63,16 +63,16 @@ def make_model(cfg, data):
 
     # Define kernel
     time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
-    latlon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=2, active_dims=[2, 3]))
-
-    P_relhum_kernel = kernels.MaternKernel(nu=0.5, ard_num_dims=2, active_dims=[4, 5])
-    kernel = time_kernel * latlon_kernel + P_relhum_kernel
+    lat_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[2])
+    lon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[3]))
+    meteo_kernel = kernels.MaternKernel(nu=0.5, ard_num_dims=4, active_dims=[4, 5, 6, 7])
+    kernel = time_kernel * lat_kernel * lon_kernel + meteo_kernel
 
     # Fix initialization seed
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Initialize inducing points at low altitude levels
-    lowaltitude_x_std = data.x_std[data.x_std[:, -1] < -cfg['model']['lbda']]
+    lowaltitude_x_std = data.x_std[data.x_std[:, -1] < -cfg['model']['L']]
     rdm_idx = torch.randperm(len(lowaltitude_x_std))[:cfg['model']['n_inducing_points']]
     inducing_points = lowaltitude_x_std[rdm_idx].float()
 
@@ -99,7 +99,7 @@ def fit(model, data, cfg):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Extract useful variables
-    lbda = cfg['model']['lbda']
+    L = cfg['model']['L']
     n_epochs = cfg['training']['n_epochs']
     batch_size = cfg['training']['batch_size']
     n_samples = len(data.z)
@@ -127,16 +127,16 @@ def fit(model, data, cfg):
 
             # Transform into aggregate predictions
             predicted_means = model.transform(fs)
-            predicted_means_3d = predicted_means.mul(torch.exp(-lbda * h_by_column_std))
+            predicted_means_3d = predicted_means.mul(torch.exp(-h_by_column_std / L))
             aggregate_predicted_means_2d = -torch.trapz(y=predicted_means_3d.unsqueeze(-1),
                                                         x=h_by_column_std.unsqueeze(-1),
                                                         dim=-2).squeeze()
 
-            # Reparametrize into gamma logprob
+            # Reparametrize into lognormal logprob
             loc, scale = model.reparametrize(mu=aggregate_predicted_means_2d)
             aggregate_prediction_2d = torch.distributions.LogNormal(loc, scale)
-            prob_gamma = aggregate_prediction_2d.log_prob(z)
-            ell_MC = prob_gamma.mean()
+            log_prob = aggregate_prediction_2d.log_prob(z)
+            ell_MC = log_prob.mean()
 
             # Compute KL term
             kl_divergence = model.variational_strategy.kl_divergence().div(n_samples)
@@ -167,7 +167,7 @@ def predict(model, data, cfg):
     # Setup index iteration and progress bar
     indices = torch.arange(len(data.x_by_column_std)).to(device)
     n_samples = len(data.z)
-    lbda = cfg['model']['lbda']
+    L = cfg['model']['L']
     batch_size = cfg['evaluation']['batch_size']
     batch_bar = Bar("Inference", max=n_samples // batch_size)
 
@@ -180,7 +180,7 @@ def predict(model, data, cfg):
             qf_by_column = model(data.x_by_column_std[idx])
 
             # Register in grid
-            prediction_3d_means[idx] = qf_by_column.mean - lbda * data.h_by_column_std[idx]
+            prediction_3d_means[idx] = qf_by_column.mean - data.h_by_column_std[idx] / L
             prediction_3d_stddevs[idx] = qf_by_column.stddev
 
             # Update progress bar
@@ -199,17 +199,18 @@ def predict(model, data, cfg):
         correction = torch.log(data.z_smooth) - torch.log(aggregate_prediction_2d)
         prediction_3d_means.add_(correction.unsqueeze(-1))
 
-        # # Make distribution
+        # Make latent vertical profile φ distribution
         prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means, prediction_3d_stddevs)
 
-        # Recalibrate variance
-        # sigma1 = cfg['evaluation']['variance_multiplier'] * prediction_3d_stddevs
-        # mu1 = prediction_3d_means + (prediction_3d_stddevs.square() - sigma1.square()) / 2
-        # prediction_3d_dist = torch.distributions.LogNormal(mu1, sigma1)
-    return prediction_3d_dist
+        # Make bext observation model distribution
+        φ = prediction_3d_dist.sample((cfg['evaluation']['n_samples'],))
+        sigma_ext = torch.tensor(cfg['evaluation']['sigma_ext'])
+        loc = torch.log(φ.clip(min=torch.finfo(torch.float64).eps)) - sigma_ext.square().div(2)
+        bext_dist = torch.distributions.LogNormal(loc, sigma_ext)
+    return prediction_3d_dist, bext_dist
 
 
-def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
+def evaluate(prediction_3d_dist, bext_dist, data, model, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
@@ -224,13 +225,16 @@ def evaluate(prediction_3d_dist, data, model, cfg, plot, output_dir):
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
-                   alpha=model.sigma.detach(),
+                   bext_dist=bext_dist,
+                   sigma=model.sigma.detach(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
 
     # Dump scores in output dir
-    dump_scores(prediction_3d_dist=prediction_3d_dist,
+    dump_scores(cfg=cfg,
+                prediction_3d_dist=prediction_3d_dist,
+                bext_dist=bext_dist,
                 groundtruth_3d=data.gt_by_column,
                 targets_2d=data.z.cpu(),
                 aggregate_fn=trpz,

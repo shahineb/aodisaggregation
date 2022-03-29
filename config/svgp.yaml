@@ -10,8 +10,9 @@ dataset:
   # Variables to use as 3D covariates
   3d_covariates:
     - pressure_as_normal
+    - st_as_normal
     - relhum_as_normal
-    # - st_as_normal
+    - omega_as_normal
     # - ALFA_AER_533nm_as_normal
     - height
 
@@ -35,7 +36,7 @@ model:
   n_inducing_points: 60
 
   # Idealized profile heigthscale parameter
-  lbda: 1.0055
+  L: 0.8708489560412566
 
   # Weights initialization seed
   seed: 42
@@ -46,7 +47,7 @@ model:
 training:
   # Number of training epochs
   n_epochs: 2
-  # n_epochs: 6
+  # n_epochs: 8
 
   # Learning rate
   lr: 0.01
@@ -66,11 +67,15 @@ evaluation:
   # Size of batches used for inference
   batch_size: 50
 
-  # Number of MC samples used for posterior mean estimation
-  n_samples: 1000
+  # Number of MC samples used for bext posterior estimation
+  n_samples: 256
+  # n_samples: 10
 
-  # Variance calibration multiplier
-  variance_multiplier: 6.
+  # bext observation model calibrated scale parameter
+  sigma_ext: 2.120
+
+  # Number of test columns (to speed up probabilistic evaluation)
+  n_test_samples: 1000
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20
@@ -88,6 +93,9 @@ evaluation:
 
   # Number of profils to plot
   n_profiles: 10
+
+  # Random seed used to select calibration profiles
+  calibration_seed: 5
 
   # Random seed to choose profiles
   seed: 5

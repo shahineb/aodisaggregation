@@ -25,7 +25,7 @@ dataset:
 # MODEL SPECIFICATIONS
 model:
   # Idealized profile heigthscale parameter
-  lbda: 1.0055
+  L: 0.8708489560412566
 
 
 
@@ -33,7 +33,13 @@ model:
 # EVALUATION
 evaluation:
   # Fixed white noise term to make a distribution (not important)
-  noise: 0.0000024
+  noise: 0.00000000001
+
+  # bext observation model calibrated scale parameter
+  sigma_ext: 2.430
+
+  # Number of test columns (to speed up probabilistic evaluation)
+  n_test_samples: 1000
 
   # Latitude index of slice to plot
   slice_latitude_idx: 20
@@ -44,7 +50,6 @@ evaluation:
   # List of variables slices to plot
   slices_covariates:
     - pressure
-    - relhum
     - ALFA_AER_533nm
 
   # Time index of profiles to plot
@@ -52,6 +57,9 @@ evaluation:
 
   # Number of profils to plot
   n_profiles: 10
+
+  # Random seed used to select calibration profiles
+  calibration_seed: 5
 
   # Random seed to choose profiles
   seed: 5

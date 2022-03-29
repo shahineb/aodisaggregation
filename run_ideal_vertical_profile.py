@@ -27,10 +27,10 @@ def main(args, cfg):
     data = migrate_to_device(data=data, device=device)
 
     # Run prediction
-    prediction_3d_dist = predict(data=data, cfg=cfg)
+    prediction_3d_dist, bext_dist = predict(data=data, cfg=cfg)
 
     # Run evaluation
-    evaluate(prediction_3d_dist=prediction_3d_dist, data=data, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
+    evaluate(prediction_3d_dist=prediction_3d_dist, bext_dist=bext_dist, data=data, cfg=cfg, plot=args['--plot'], output_dir=args['--o'])
 
 
 def migrate_to_device(data, device):
@@ -45,22 +45,27 @@ def migrate_to_device(data, device):
 
 def predict(data, cfg):
     # Predict idealized exponential height profile
-    lbda = cfg['model']['lbda']
+    L = cfg['model']['L']
     h_stddev = data.h_by_column.std()
-    prediction_3d = torch.exp(-lbda * data.h_by_column_std)
+    prediction_3d = torch.exp(-data.h_by_column_std / L)
 
     # Rescale predictions by τ/∫φdh
-    aggregate_prediction = h_stddev * (torch.exp(-lbda * data.h_by_column_std[:, -1]) - torch.exp(-lbda * data.h_by_column_std[:, 0])) / lbda
+    aggregate_prediction = h_stddev * L * (torch.exp(-data.h_by_column_std[:, -1] / L) - torch.exp(-data.h_by_column_std[:, 0] / L))
     correction = data.z_smooth / aggregate_prediction
     prediction_3d.mul_(correction.unsqueeze(-1))
 
-    # Make distribution
+    # Make latent vertical profile dummy distribution
     noise = cfg['evaluation']['noise']
     prediction_3d_dist = torch.distributions.Normal(prediction_3d, noise)
-    return prediction_3d_dist
+
+    # Make bext observation model distribution
+    sigma_ext = torch.tensor(cfg['evaluation']['sigma_ext'])
+    loc = torch.log(prediction_3d.clip(min=torch.finfo(torch.float64).eps)) - sigma_ext.square().div(2)
+    bext_dist = torch.distributions.LogNormal(loc, sigma_ext)
+    return prediction_3d_dist, bext_dist
 
 
-def evaluate(prediction_3d_dist, data, cfg, plot, output_dir):
+def evaluate(prediction_3d_dist, bext_dist, data, cfg, plot, output_dir):
     # Define aggregation wrt non-standardized height for evaluation
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
@@ -71,16 +76,21 @@ def evaluate(prediction_3d_dist, data, cfg, plot, output_dir):
         dump_plots(cfg=cfg,
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
-                   alpha=1,
+                   bext_dist=bext_dist,
+                   sigma=torch.tensor(1.),
                    aggregate_fn=trpz,
+                   ideal=True,
                    output_dir=output_dir)
         logging.info("Dumped plots")
 
     # Dump scores in output dir
-    dump_scores(prediction_3d_dist=prediction_3d_dist,
+    dump_scores(cfg=cfg,
+                prediction_3d_dist=prediction_3d_dist,
+                bext_dist=bext_dist,
                 groundtruth_3d=data.gt_by_column,
                 targets_2d=data.z,
                 aggregate_fn=trpz,
+                ideal=True,
                 output_dir=output_dir)
     logging.info("Dumped scores")
 
