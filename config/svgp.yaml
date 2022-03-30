@@ -68,7 +68,7 @@ evaluation:
   batch_size: 50
 
   # Number of MC samples used for bext posterior estimation
-  n_samples: 256
+  n_samples: 512
   # n_samples: 10
 
   # bext observation model calibrated scale parameter

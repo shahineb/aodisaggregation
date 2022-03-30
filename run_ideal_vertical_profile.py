@@ -38,6 +38,7 @@ def migrate_to_device(data, device):
     data = data._replace(x_std=data.x_std.to(device),
                          x_by_column_std=data.x_by_column_std.to(device),
                          z=data.z.to(device),
+                         z_smooth=data.z_smooth.to(device),
                          h_by_column_std=data.h_by_column_std.to(device))
 
     return data
@@ -46,7 +47,7 @@ def migrate_to_device(data, device):
 def predict(data, cfg):
     # Predict idealized exponential height profile
     L = cfg['model']['L']
-    h_stddev = data.h_by_column.std()
+    h_stddev = data.h_by_column.std().to(device)
     prediction_3d = torch.exp(-data.h_by_column_std / L)
 
     # Rescale predictions by τ/∫φdh

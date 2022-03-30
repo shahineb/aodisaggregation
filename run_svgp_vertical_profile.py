@@ -50,6 +50,7 @@ def migrate_to_device(data, device):
     data = data._replace(x_std=data.x_std.to(device),
                          x_by_column_std=data.x_by_column_std.to(device),
                          z=data.z.to(device),
+                         z_smooth=data.z_smooth.to(device),
                          h_by_column_std=data.h_by_column_std.to(device))
 
     return data
@@ -162,7 +163,7 @@ def predict(model, data, cfg):
     # Initialize empty tensor
     prediction_3d_means = torch.zeros_like(data.h_by_column_std)
     prediction_3d_stddevs = torch.zeros_like(data.h_by_column_std)
-    h_stddev = data.h_by_column.std()
+    h_stddev = data.h_by_column.std().to(device)
 
     # Setup index iteration and progress bar
     indices = torch.arange(len(data.x_by_column_std)).to(device)
