@@ -51,6 +51,7 @@ def migrate_to_device(data, device):
                          x_by_column_std=data.x_by_column_std.to(device),
                          z=data.z.to(device),
                          z_smooth=data.z_smooth.to(device),
+                         h_by_column=data.h_by_column.to(device),
                          h_by_column_std=data.h_by_column_std.to(device))
 
     return data
@@ -193,7 +194,7 @@ def predict(model, data, cfg):
 
         # Rescale predictions by τ/∫φdh
         def trpz(grid):
-            aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1).cpu(), dim=-2)
+            aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
             return aggregated_grid
         φ = torch.exp(prediction_3d_means + 0.5 * prediction_3d_stddevs.square())
         aggregate_prediction_2d = trpz(φ.unsqueeze(-1)).squeeze()
@@ -201,7 +202,7 @@ def predict(model, data, cfg):
         prediction_3d_means.add_(correction.unsqueeze(-1))
 
         # Make latent vertical profile φ distribution
-        prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means, prediction_3d_stddevs)
+        prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means.cpu(), prediction_3d_stddevs.cpu())
 
         # Make bext observation model distribution
         φ = prediction_3d_dist.sample((cfg['evaluation']['n_samples'],))
@@ -227,7 +228,7 @@ def evaluate(prediction_3d_dist, bext_dist, data, model, cfg, plot, output_dir):
                    dataset=data.dataset,
                    prediction_3d_dist=prediction_3d_dist,
                    bext_dist=bext_dist,
-                   sigma=model.sigma.detach(),
+                   sigma=model.sigma.detach().cpu(),
                    aggregate_fn=trpz,
                    output_dir=output_dir)
         logging.info("Dumped plots")
