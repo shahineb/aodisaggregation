@@ -89,8 +89,6 @@ def evaluate(prediction_3d_dist, bext_dist, data, cfg, plot, output_dir):
                 prediction_3d_dist=prediction_3d_dist,
                 bext_dist=bext_dist,
                 groundtruth_3d=data.gt_by_column,
-                targets_2d=data.z,
-                aggregate_fn=trpz,
                 ideal=True,
                 output_dir=output_dir)
     logging.info("Dumped scores")

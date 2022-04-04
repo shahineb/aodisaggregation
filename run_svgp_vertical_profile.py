@@ -123,7 +123,7 @@ def fit(model, data, cfg):
             # Compute q(f)
             qf_by_column = model(x_by_column_std)
 
-            # Draw a bunch of samples from the variational posterior
+            # Draw a sample from the variational posterior
             fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
             fs = fs.add(qf_by_column.mean).squeeze()
 
@@ -140,8 +140,8 @@ def fit(model, data, cfg):
             log_prob = aggregate_prediction_2d.log_prob(z)
             ell_MC = log_prob.mean()
 
-            # Compute KL term
-            kl_divergence = model.variational_strategy.kl_divergence().div(n_samples)
+            # Compute KL term and adjust for minibatch size
+            kl_divergence = model.variational_strategy.kl_divergence().mul(batch_size / n_samples)
 
             # Take gradient step
             loss = kl_divergence - ell_MC
@@ -238,8 +238,6 @@ def evaluate(prediction_3d_dist, bext_dist, data, model, cfg, plot, output_dir):
                 prediction_3d_dist=prediction_3d_dist,
                 bext_dist=bext_dist,
                 groundtruth_3d=data.gt_by_column,
-                targets_2d=data.z.cpu(),
-                aggregate_fn=trpz,
                 output_dir=output_dir)
     logging.info("Dumped scores")
 

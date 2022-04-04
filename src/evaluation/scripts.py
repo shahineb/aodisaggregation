@@ -7,12 +7,10 @@ from src.evaluation import metrics
 from src.evaluation import visualization
 
 
-def dump_scores(cfg, prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, output_dir, ideal=False):
+def dump_scores(cfg, prediction_3d_dist, bext_dist, groundtruth_3d, output_dir, ideal=False):
     scores = metrics.compute_scores(prediction_3d_dist=prediction_3d_dist,
                                     bext_dist=bext_dist,
                                     groundtruth_3d=groundtruth_3d,
-                                    targets_2d=targets_2d,
-                                    aggregate_fn=aggregate_fn,
                                     calibration_seed=cfg['evaluation']['calibration_seed'],
                                     n_test_samples=cfg['evaluation']['n_test_samples'],
                                     ideal=ideal)

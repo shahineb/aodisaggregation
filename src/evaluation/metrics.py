@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import pearsonr
 
 
-def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, aggregate_fn, calibration_seed, n_test_samples, ideal):
+def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, calibration_seed, n_test_samples, ideal):
     """Computes prediction scores
 
     Args:
@@ -21,30 +21,26 @@ def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, targets_2d, ag
     # Extract posterior mean prediction
     prediction_3d = prediction_3d_dist.mean.cpu()
 
-    # Compute metrics over raw predictions
-    scores_2d = compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn)
-    scores_3d_isotropic = compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d)
-    scores_3d_vertical = compute_3d_vertical_metrics(prediction_3d, groundtruth_3d)
-    scores_3d_probabilistic = compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed, n_test_samples, ideal)
+    # Compute metrics over all predictions
+    scores_3d_isotropic_all = compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d)
+    scores_3d_probabilistic_all = compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed, n_test_samples, ideal)
 
-    # Compute metrics over standardized predictions
-    sigma_2d = targets_2d.std()
-    sigma_3d = groundtruth_3d.std()
-    std_scores_2d = compute_2d_aggregate_metrics(prediction_3d.div(sigma_2d), targets_2d.div(sigma_2d), aggregate_fn)
-    std_scores_3d_isotropic = compute_3d_isotropic_metrics(prediction_3d.div(sigma_3d), groundtruth_3d.div(sigma_3d))
-    std_scores_3d_vertical = compute_3d_vertical_metrics(prediction_3d.div(sigma_3d), groundtruth_3d.div(sigma_3d))
+    # Compute metrics over boundary layer only
+    groundtruth_3d_bl = groundtruth_3d[..., 22:]
+    φ_mean_bl = prediction_3d_dist.mean[..., 22:]
+    bext_loc_bl, bext_scale_bl = bext_dist.loc[..., 22:], bext_dist.scale[..., 22:]
+    bext_dist_bl = torch.distributions.LogNormal(bext_loc_bl, bext_scale_bl)
+    scores_3d_isotropic_boundary = compute_3d_isotropic_metrics(φ_mean_bl.cpu(), groundtruth_3d_bl)
+    scores_3d_probabilistic_boundary = compute_3d_probabilistic_metrics(bext_dist_bl, groundtruth_3d_bl, calibration_seed, n_test_samples, ideal)
 
     # Encapsulate scores into output dictionnary
-    output = {'raw': {'2d': scores_2d,
-                      '3d': {'isotropic': scores_3d_isotropic,
-                             'vertical': scores_3d_vertical,
-                             'probabilistic': scores_3d_probabilistic}
+    output = {'all': {'deterministic': scores_3d_isotropic_all,
+                      'probabilistic': scores_3d_probabilistic_all
                       },
 
-              'std': {'2d': std_scores_2d,
-                      '3d': {'isotropic': std_scores_3d_isotropic,
-                             'vertical': std_scores_3d_vertical}
-                      }
+              'boundary_layer': {'deterministic': scores_3d_isotropic_boundary,
+                                 'probabilistic': scores_3d_probabilistic_boundary
+                                 }
               }
     return output
 
@@ -81,7 +77,7 @@ def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
 
     # Compute quantiles bias
     bias50 = torch.quantile(aggregate_prediction_2d, q=0.50) - torch.quantile(targets_2d, q=0.50)
-    bias90 = torch.quantile(aggregate_prediction_2d, q=0.90) - torch.quantile(targets_2d, q=0.90)
+    bias98 = torch.quantile(aggregate_prediction_2d, q=0.98) - torch.quantile(targets_2d, q=0.98)
 
     # Encapsulate results in output dictionnary
     output = {'mb': mean_bias.item(),
@@ -91,7 +87,7 @@ def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
               'nmae': nmae.item(),
               'corr': corr,
               'bias50': bias50.item(),
-              'bias90': bias90.item()}
+              'bias98': bias98.item()}
     return output
 
 
@@ -113,27 +109,20 @@ def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
     rmse = torch.square(difference).mean().sqrt()
     mae = torch.abs(difference).mean()
 
-    # Compute normalized distances metrics
-    q25, q75 = torch.quantile(groundtruth_3d, q=torch.tensor([0.25, 0.75]))
-    nrmse = rmse.div(q75 - q25)
-    nmae = mae.div(q75 - q25)
-
     # Compute spearman correlation
     corr = spearman_correlation(prediction_3d.flatten(), groundtruth_3d.flatten())
 
     # Compute quantiles bias
     bias50 = torch.quantile(prediction_3d, q=0.50) - torch.quantile(groundtruth_3d, q=0.50)
-    bias90 = torch.quantile(prediction_3d, q=0.90) - torch.quantile(groundtruth_3d, q=0.90)
+    bias98 = torch.quantile(prediction_3d, q=0.98) - torch.quantile(groundtruth_3d, q=0.98)
 
     # Encapsulate results in output dictionnary
     output = {'mb': mean_bias.item(),
               'rmse': rmse.item(),
               'mae': mae.item(),
-              'nrmse': nrmse.item(),
-              'nmae': nmae.item(),
               'corr': corr,
               'bias50': bias50.item(),
-              'bias90': bias90.item()}
+              'bias98': bias98.item()}
     return output
 
 
@@ -158,7 +147,7 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
     mae = torch.abs(difference).mean(dim=-1).mean()
     corr = np.mean([spearman_correlation(pred, gt) for (pred, gt) in zip(prediction_3d, groundtruth_3d)])
     bias50 = torch.mean(torch.quantile(prediction_3d, q=0.50, dim=-1) - torch.quantile(groundtruth_3d, q=0.50), dim=-1)
-    bias90 = torch.mean(torch.quantile(prediction_3d, q=0.90, dim=-1) - torch.quantile(groundtruth_3d, q=0.90), dim=-1)
+    bias98 = torch.mean(torch.quantile(prediction_3d, q=0.98, dim=-1) - torch.quantile(groundtruth_3d, q=0.98), dim=-1)
 
     # Compute normalized distances metrics
     q25, q75 = torch.quantile(groundtruth_3d, q=torch.tensor([0.25, 0.75]))
@@ -173,7 +162,7 @@ def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
               'nmae': nmae.item(),
               'corr': float(corr),
               'bias50': bias50.item(),
-              'bias90': bias90.item()}
+              'bias98': bias98.item()}
     return output
 
 
