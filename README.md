@@ -3,6 +3,8 @@
 
 ## Getting started
 
+Download curated dataset to run experiments [here](https://www.dropbox.com/s/m5p9ztdkqyfvud3/aodisaggregation_emmisions_test_6.3_ACCMIP_200806.06_echam.nc?dl=0).
+
 Run from root directory
 
 - Stochastic variational Gaussian process model to reconstruct extinction profiles
@@ -61,9 +63,9 @@ $ (venv) pip install -r requirements.txt
 
 
 ## References
-@inproceedings{bouabid2022aodissaggregation,
-  title = {{Deconditional Downscaling with Gaussian Processes}},
-  author = {Chau, Siu Lun and Bouabid, Shahine and Sejdinovic, Dino},
-  year = {2021},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)}
+@inproceedings{lorem,
+  title = {{lorem}},
+  author = {lorem},
+  year = {lorem},
+  booktitle = {lorem}
 }
