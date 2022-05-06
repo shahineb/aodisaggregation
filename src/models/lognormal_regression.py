@@ -10,24 +10,19 @@ class AggregateLogNormalSVGP(ApproximateGP):
 
     Args:
         inducing_points (torch.Tensor): sparse GP inducing points intialization.
-        transform (callable): positive link function mapping the GP onto the Gamma mean.
+        transform (callable): positive link function mapping the GP onto the LogNormal mean.
         kernel (gpytorch.kernels.Kernel): GP covariance function.
         aggregate_fn (callable): aggregation operator that aggregates the transformed GP.
-        fit_intercept (bool): if True, uses constant mean for the GP.
 
     """
-    def __init__(self, inducing_points, transform, kernel, aggregate_fn, fit_intercept=False):
+    def __init__(self, inducing_points, transform, kernel, aggregate_fn):
         variational_strategy = self._set_variational_strategy(inducing_points)
         super().__init__(variational_strategy=variational_strategy)
         self.raw_sigma = nn.Parameter(torch.zeros(1))
         self.kernel = kernel
         self.transform = transform
         self.aggregate_fn = aggregate_fn
-        self.fit_intercept = fit_intercept
-        if self.fit_intercept:
-            self.mean = means.ConstantMean()
-        else:
-            self.mean = means.ZeroMean()
+        self.mean = means.ZeroMean()
 
     @property
     def sigma(self):
@@ -50,16 +45,18 @@ class AggregateLogNormalSVGP(ApproximateGP):
     def _set_variational_strategy(self, inducing_points):
         """Sets variational family of distribution to use and variational approximation
             strategy module
+
         Args:
             inducing_points (torch.Tensor): tensor of landmark points from which to
                 compute inducing values
+
         Returns:
             type: gpytorch.variational.VariationalStrategy
         """
         # Use gaussian variational family
         variational_distribution = variational.CholeskyVariationalDistribution(num_inducing_points=inducing_points.size(0))
 
-        # Set default variational approximation strategy
+        # Set default variational approximation strategy + allow inducing location tuning
         variational_strategy = variational.VariationalStrategy(model=self,
                                                                inducing_points=inducing_points,
                                                                variational_distribution=variational_distribution,

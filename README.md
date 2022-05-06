@@ -3,10 +3,27 @@
 
 ## Getting started
 
-- Run from root directory
+Run from root directory
+
+- Stochastic variational Gaussian process model to reconstruct extinction profiles
 ```bash
 $ python run_svgp_vertical_profile.py --cfg=cfg/svgp.yaml --o=path/to/output/directory --plot
 ```
+
+- Exponential idealized baseline to reconstruct extinction profiles
+```bash
+$ python run_idea_vertical_profile.py --cfg=cfg/ideal.yaml --o=path/to/output/directory --plot
+```
+
+
+<p align="center">
+  <img width="65%" src="docs/img/slices.png"/>
+</p>
+<p align="center">
+  <em> Example of vertical slices at latitude 51.29 of groundtruth ECHAM-HAM extinction profiles, predicted extinction posterior mean and 2.5%/97.5% quantiles of predicted extinction distribution </em>
+</p>
+
+
 
 
 ## Reproduce experiments
@@ -23,11 +40,12 @@ $ python aggregate_results.py --i=experiments/data/outputs/svgp --o=experiments/
 ```
 
 
+
 ## Installation
 
 Code implemented in Python 3.8.0
 
-#### Setting up environment
+#### Setting up environment with [`pyenv`](https://github.com/pyenv/pyenv)
 
 Create and activate environment
 ```bash
@@ -40,3 +58,12 @@ Install dependencies
 ```bash
 $ (venv) pip install -r requirements.txt
 ```
+
+
+## References
+@inproceedings{bouabid2022aodissaggregation,
+  title = {{Deconditional Downscaling with Gaussian Processes}},
+  author = {Chau, Siu Lun and Bouabid, Shahine and Sejdinovic, Dino},
+  year = {2021},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)}
+}

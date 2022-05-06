@@ -21,7 +21,7 @@ from src.evaluation import dump_scores, dump_plots
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
-    data = make_data(cfg=cfg, include_2d=False)
+    data = make_data(cfg=cfg)
 
     # Move needed tensors only to device
     data = migrate_to_device(data=data, device=device)
@@ -37,8 +37,8 @@ def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
     data = data._replace(x_std=data.x_std.to(device),
                          x_by_column_std=data.x_by_column_std.to(device),
-                         z=data.z.to(device),
-                         z_smooth=data.z_smooth.to(device),
+                         τ=data.τ.to(device),
+                         τ_smooth=data.τ_smooth.to(device),
                          h_by_column_std=data.h_by_column_std.to(device))
 
     return data
@@ -52,10 +52,10 @@ def predict(data, cfg):
 
     # Rescale predictions by τ/∫φdh
     aggregate_prediction = h_stddev * L * (torch.exp(-data.h_by_column_std[:, -1] / L) - torch.exp(-data.h_by_column_std[:, 0] / L))
-    correction = data.z_smooth / aggregate_prediction
+    correction = data.τ_smooth / aggregate_prediction
     prediction_3d.mul_(correction.unsqueeze(-1))
 
-    # Make latent vertical profile dummy distribution
+    # Make latent vertical profile dummy distribution - only needed for code pipeline consistency
     noise = cfg['evaluation']['noise']
     prediction_3d_dist = torch.distributions.Normal(prediction_3d, noise)
 

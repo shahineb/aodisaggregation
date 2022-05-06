@@ -7,35 +7,31 @@ dataset:
   # Path to main model data .nc file
   path: data/aodisaggregation_emmisions_test_6.3_ACCMIP_200806.06_echam.nc
 
-  # Variables to use as 3D covariates
+  # Meteorological variables to use as 3D predictors
   3d_covariates:
     - pressure_as_normal
     - st_as_normal
     - relhum_as_normal
     - omega_as_normal
-    # - ALFA_AER_533nm_as_normal
-    - height
+    - height  # only used to initialize inducing points in boundary layer
 
-  # Variable to use as 2D aggregate target
+  # Variable to use as 2D aggregate target (i.e. AOD)
   target: TAU_2D_550nm
 
   # Spatially smoothed 2D aggregate target used for rescaling
   smoothed_target: SMOOTH_TAU_2D_550nm
 
-  # Variable corresponding to unobserved groundtruth 3D field
+  # Variable corresponding to unobserved groundtruth 3D field (i.e. bext)
   groundtruth: ALFA_AER_533nm
 
 
 
 # MODEL SPECIFICATIONS
 model:
-  # Whether to use bias or not
-  fit_intercept: False
-
   # Number of inducing points
   n_inducing_points: 60
 
-  # Idealized profile heigthscale parameter
+  # Idealized profile heigthscale parameter -- see notebooks/choose-exponential-height-scale.ipynb
   L: 0.8708489560412566
 
   # Weights initialization seed
@@ -68,8 +64,8 @@ evaluation:
   batch_size: 50
 
   # Number of MC samples used for bext posterior estimation
-  n_samples: 1000
-  # n_samples: 10
+  # n_samples: 1000
+  n_samples: 10
 
   # bext observation model calibrated scale parameter
   sigma_ext: 2.120
@@ -86,7 +82,9 @@ evaluation:
   # List of variables slices to plot
   slices_covariates:
     - pressure
+    - st
     - relhum
+    - omega
 
   # Time index of profiles to plot
   profiles_time_idx: 0
