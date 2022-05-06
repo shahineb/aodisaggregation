@@ -19,7 +19,7 @@ $ python run_idea_vertical_profile.py --cfg=cfg/ideal.yaml --o=path/to/output/di
 
 
 <p align="center">
-  <img width="65%" src="docs/img/slices.png"/>
+  <img width="85%" src="docs/img/slices.png"/>
 </p>
 <p align="center">
   <em> Example of vertical slices at latitude 51.29 of groundtruth ECHAM-HAM extinction profiles, predicted extinction posterior mean and 2.5%/97.5% quantiles of predicted extinction distribution </em>
