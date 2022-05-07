@@ -1,5 +1,4 @@
-# Reconstructing Aerosols Vertical Profiles with Aggregate Output Learning
-
+# AODisaggregation: toward global aerosol vertical profiles
 
 ## Getting started
 
@@ -63,9 +62,3 @@ $ (venv) pip install -r requirements.txt
 
 
 ## References
-@inproceedings{lorem,
-  title = {{lorem}},
-  author = {lorem},
-  year = {lorem},
-  booktitle = {lorem}
-}
