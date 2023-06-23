@@ -37,14 +37,17 @@ from gpytorch import kernels
 class HaversineMaternKernel(kernels.MaternKernel):
     _deg2rad = math.pi / 180
     _radius = 6371
-    _mu_latlon = torch.tensor([0., 179.0625])
-    _sigma_latlon = torch.tensor([51.6863, 103.9217])
+
+    def __init__(self, nu, **kwargs):
+        super().__init__(nu=nu, **kwargs)
+        self.register_buffer('mu_latlon', torch.tensor([0., 179.0625]))
+        self.register_buffer('sigma_latlon', torch.tensor([51.6863, 103.9217]))
 
     def forward(self, x1, x2, **kwargs):
         latlon1_std = torch.deg2rad(x1).squeeze()
         latlon2_std = torch.deg2rad(x2).squeeze()
-        latlon1 = self._mu_latlon + self._sigma_latlon * latlon1_std.detach()
-        latlon2 = self._mu_latlon + self._sigma_latlon * latlon2_std.detach()
+        latlon1 = self.mu_latlon + self.sigma_latlon * latlon1_std.detach()
+        latlon2 = self.mu_latlon + self.sigma_latlon * latlon2_std.detach()
 
         distance = np.stack([haversine_distances(foo, bar) for (foo, bar) in zip(latlon1, latlon2)])
         distance = torch.from_numpy(distance).float().div(self.lengthscale)
