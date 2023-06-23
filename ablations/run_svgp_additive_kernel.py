@@ -11,12 +11,16 @@ Options:
   --plot                           Outputs plots.
 """
 import os
+import sys
 import yaml
 import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
 from gpytorch import kernels
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
+
 from src.preprocessing import make_data
 from src.models import AggregateLogNormalSVGP
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
