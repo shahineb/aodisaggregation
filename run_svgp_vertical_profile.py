@@ -19,6 +19,7 @@ import torch
 from gpytorch import kernels
 from src.preprocessing import make_data
 from src.models import AggregateLogNormalSVGP
+from src.kernels import HaversineMaternKernel
 from src.evaluation import dump_scores, dump_plots, dump_state_dict
 
 
@@ -64,11 +65,10 @@ def make_model(cfg, data):
         return aggregated_grid
 
     # Define GP kernel
-    time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
-    lat_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[2])
-    lon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[3]))
+    time_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0]))
+    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3])
     meteo_kernel = kernels.MaternKernel(nu=0.5, ard_num_dims=4, active_dims=[4, 5, 6, 7])
-    kernel = time_kernel * lat_kernel * lon_kernel + meteo_kernel
+    kernel = time_kernel * latlon_kernel + meteo_kernel
 
     # Fix random seed for inducing points intialization
     torch.random.manual_seed(cfg['model']['seed'])
