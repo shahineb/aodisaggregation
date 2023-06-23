@@ -81,3 +81,20 @@ class AggregateLogNormalSVGP(ApproximateGP):
         prior_distribution = distributions.MultivariateNormal(mean=mean,
                                                               covariance_matrix=covar)
         return prior_distribution
+
+
+class LinearModel(torch.nn.Module):
+    def __init__(self, ndim, lbda, transform, aggregate_fn):
+        super().__init__()
+        self.transform = transform
+        self.aggregate_fn = aggregate_fn
+        self.ndim = ndim
+        self.lbda = lbda
+        self.bias = torch.nn.Parameter(torch.zeros(1))
+        self.weights = torch.nn.Parameter(torch.randn(self.ndim))
+
+    def forward(self, x):
+        return self.transform(x @ self.weights + self.bias)
+
+    def regularisation_term(self):
+        return self.lbda * (torch.dot(self.weights, self.weights) + self.bias.pow(2))

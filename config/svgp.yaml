@@ -1,5 +1,5 @@
 ################################################################################
-#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH MAP GP GAMMA REGRESSION
+#   CONFIGURATIONS FOR VERTICAL DISAGGREGATION EXPERIMENT WITH SVGP MODEL
 ################################################################################
 
 # DATASET
@@ -68,8 +68,8 @@ evaluation:
   batch_size: 50
 
   # Number of MC samples used for bext posterior estimation
-  n_samples: 1000
-  # n_samples: 10
+  # n_samples: 1000
+  n_samples: 100
 
   # bext observation model calibrated scale parameter
   sigma_ext: 2.120
@@ -86,7 +86,9 @@ evaluation:
   # List of variables slices to plot
   slices_covariates:
     - pressure
+    - st
     - relhum
+    - omega
 
   # Time index of profiles to plot
   profiles_time_idx: 0
