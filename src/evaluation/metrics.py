@@ -45,52 +45,6 @@ def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, calibration_se
     return output
 
 
-def compute_2d_aggregate_metrics(prediction_3d, targets_2d, aggregate_fn):
-    """Computes prediction scores between aggregation of 3D+t prediction and
-    2D+t aggregate targets used for training
-
-    Args:
-        prediction_3d (torch.Tensor): (time * lat * lon, lev)
-        targets_2d (torch.Tensor): (time * lat * lon)
-        aggregate_fn (callable): callable used to aggregate (time * lat * lon, lev, -1) -> (time * lat * lon, -1)
-
-    Returns:
-        type: dict[float]
-
-    """
-    # Aggregate prediction along height
-    aggregate_prediction_2d = aggregate_fn(prediction_3d.unsqueeze(-1)).squeeze()
-
-    # Compute raw distances metrics
-    difference = aggregate_prediction_2d.sub(targets_2d)
-    mean_bias = difference.mean()
-    rmse = torch.square(difference).mean().sqrt()
-    mae = torch.abs(difference).mean()
-
-    # Compute normalized distances metrics
-    q25, q75 = torch.quantile(targets_2d, q=torch.tensor([0.25, 0.75]))
-    nrmse = rmse.div(q75 - q25)
-    nmae = mae.div(q75 - q25)
-
-    # Compute spearman correlation
-    corr = spearman_correlation(aggregate_prediction_2d, targets_2d)
-
-    # Compute quantiles bias
-    bias50 = torch.quantile(aggregate_prediction_2d, q=0.50) - torch.quantile(targets_2d, q=0.50)
-    bias98 = torch.quantile(aggregate_prediction_2d, q=0.98) - torch.quantile(targets_2d, q=0.98)
-
-    # Encapsulate results in output dictionnary
-    output = {'mb': mean_bias.item(),
-              'rmse': rmse.item(),
-              'mae': mae.item(),
-              'nrmse': nrmse.item(),
-              'nmae': nmae.item(),
-              'corr': corr,
-              'bias50': bias50.item(),
-              'bias98': bias98.item()}
-    return output
-
-
 def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
     """Computes prediction scores between 3D+t prediction and 3D+t unobserved groundtruth.
     Metrics are averaged isotropically accross all dimensions.
@@ -112,8 +66,7 @@ def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
     # Compute spearman correlation
     corr = spearman_correlation(prediction_3d.flatten(), groundtruth_3d.flatten())
 
-    # Compute quantiles bias
-    bias50 = torch.quantile(prediction_3d, q=0.50) - torch.quantile(groundtruth_3d, q=0.50)
+    # Compute 98th quantiles bias
     bias98 = torch.quantile(prediction_3d, q=0.98) - torch.quantile(groundtruth_3d, q=0.98)
 
     # Encapsulate results in output dictionnary
@@ -121,47 +74,6 @@ def compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d):
               'rmse': rmse.item(),
               'mae': mae.item(),
               'corr': corr,
-              'bias50': bias50.item(),
-              'bias98': bias98.item()}
-    return output
-
-
-def compute_3d_vertical_metrics(prediction_3d, groundtruth_3d):
-    """Computes prediction scores between 3D+t prediction and 3D+t unobserved groundtruth.
-    Metrics are computed for vertical profiles and then averaged over time, lat, lon.
-
-    Args:
-        prediction_3d (torch.Tensor): (time * lat * lon, lev)
-        groundtruth_3d (torch.Tensor): (time * lat * lon, lev)
-
-    Returns:
-        type: dict[float]
-
-    """
-    # Compute difference tensor
-    difference = prediction_3d.sub(groundtruth_3d)
-
-    # Compute metrics columnwise and average out
-    mean_bias = difference.mean(dim=-1).mean()
-    rmse = torch.square(difference).mean(dim=-1).sqrt().mean()
-    mae = torch.abs(difference).mean(dim=-1).mean()
-    corr = np.mean([spearman_correlation(pred, gt) for (pred, gt) in zip(prediction_3d, groundtruth_3d)])
-    bias50 = torch.mean(torch.quantile(prediction_3d, q=0.50, dim=-1) - torch.quantile(groundtruth_3d, q=0.50), dim=-1)
-    bias98 = torch.mean(torch.quantile(prediction_3d, q=0.98, dim=-1) - torch.quantile(groundtruth_3d, q=0.98), dim=-1)
-
-    # Compute normalized distances metrics
-    q25, q75 = torch.quantile(groundtruth_3d, q=torch.tensor([0.25, 0.75]))
-    nrmse = rmse.div(q75 - q25)
-    nmae = mae.div(q75 - q25)
-
-    # Encapsulate results in output dictionnary
-    output = {'mb': mean_bias.item(),
-              'rmse': rmse.item(),
-              'mae': mae.item(),
-              'nrmse': nrmse.item(),
-              'nmae': nmae.item(),
-              'corr': float(corr),
-              'bias50': bias50.item(),
               'bias98': bias98.item()}
     return output
 
@@ -198,7 +110,7 @@ def compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed
     eps = torch.finfo(torch.float64).eps
     gt = groundtruth_3d.clip(min=eps)
     if ideal:
-        # Actually reaches upper bound for ideal model, i.e. ll = elbo
+        # Actually reaches upper bound for ideal model, i.e. loglikelihood = elbo
         elbo = bext_dist.log_prob(gt).mean()
     else:
         log_prob = bext_dist.log_prob(gt.unsqueeze(0).tile((bext_dist.mean.size(0), 1, 1)))

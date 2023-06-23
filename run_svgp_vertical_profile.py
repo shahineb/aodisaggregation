@@ -25,7 +25,7 @@ from src.evaluation import dump_scores, dump_plots, dump_state_dict
 def main(args, cfg):
     # Create dataset
     logging.info("Loading dataset")
-    data = make_data(cfg=cfg, include_2d=False)
+    data = make_data(cfg=cfg)
 
     # Move needed tensors only to device
     data = migrate_to_device(data=data, device=device)
@@ -49,8 +49,8 @@ def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
     data = data._replace(x_std=data.x_std.to(device),
                          x_by_column_std=data.x_by_column_std.to(device),
-                         z=data.z.to(device),
-                         z_smooth=data.z_smooth.to(device),
+                         τ=data.τ.to(device),
+                         τ_smooth=data.τ_smooth.to(device),
                          h_by_column=data.h_by_column.to(device),
                          h_by_column_std=data.h_by_column_std.to(device))
 
@@ -58,19 +58,19 @@ def migrate_to_device(data, device):
 
 
 def make_model(cfg, data):
-    # Create aggregation operator
+    # Create trapezoidal integation operator
     def trpz(grid):
         aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column_std.unsqueeze(-1), dim=-2)
         return aggregated_grid
 
-    # Define kernel
+    # Define GP kernel
     time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
     lat_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[2])
     lon_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[3]))
     meteo_kernel = kernels.MaternKernel(nu=0.5, ard_num_dims=4, active_dims=[4, 5, 6, 7])
     kernel = time_kernel * lat_kernel * lon_kernel + meteo_kernel
 
-    # Fix initialization seed
+    # Fix random seed for inducing points intialization
     torch.random.manual_seed(cfg['model']['seed'])
 
     # Initialize inducing points at low altitude levels
@@ -82,33 +82,34 @@ def make_model(cfg, data):
     model = AggregateLogNormalSVGP(inducing_points=inducing_points,
                                    transform=torch.exp,
                                    aggregate_fn=trpz,
-                                   kernel=kernel,
-                                   fit_intercept=cfg['model']['fit_intercept'])
+                                   kernel=kernel)
     return model
 
 
 def fit(model, data, cfg):
     # Define iterator
     def batch_iterator(batch_size):
-        rdm_indices = torch.randperm(data.z.size(0))
+        rdm_indices = torch.randperm(data.τ.size(0))
         for idx in rdm_indices.split(batch_size):
             x_by_column_std = data.x_by_column_std[idx]
             h_by_column_std = data.h_by_column_std[idx]
-            z = data.z[idx]
-            yield x_by_column_std, h_by_column_std, z
+            τ = data.τ[idx]
+            yield x_by_column_std, h_by_column_std, τ
 
-    # Define optimizer and exact loglikelihood module
+    # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Extract useful variables
     L = cfg['model']['L']
     n_epochs = cfg['training']['n_epochs']
     batch_size = cfg['training']['batch_size']
-    n_samples = len(data.z)
+    n_samples = len(data.τ)
 
     # Initialize progress bar
     epoch_bar = Bar("Epoch", max=n_epochs)
     epoch_bar.finish()
+
+    # Fix random seed for batch shuffling
     torch.random.manual_seed(cfg['training']['seed'])
 
     for epoch in range(n_epochs):
@@ -116,31 +117,33 @@ def fit(model, data, cfg):
         batch_bar = Bar("Batch", max=n_samples // batch_size)
         epoch_ell, epoch_kl = 0, 0
 
-        for i, (x_by_column_std, h_by_column_std, z) in enumerate(batch_iterator(cfg['training']['batch_size'])):
+        for i, (x_by_column_std, h_by_column_std, τ) in enumerate(batch_iterator(cfg['training']['batch_size'])):
             # Zero-out remaining gradients
             optimizer.zero_grad()
 
-            # Compute q(f)
+            # Compute variational posterior q(f)
             qf_by_column = model(x_by_column_std)
 
             # Draw a sample from the variational posterior
             fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
             fs = fs.add(qf_by_column.mean).squeeze()
 
-            # Transform into aggregate predictions
+            # Transform into extinction predictions and integrate
             predicted_means = model.transform(fs)
             predicted_means_3d = predicted_means.mul(torch.exp(-h_by_column_std / L))
             aggregate_predicted_means_2d = -torch.trapz(y=predicted_means_3d.unsqueeze(-1),
                                                         x=h_by_column_std.unsqueeze(-1),
                                                         dim=-2).squeeze()
 
-            # Reparametrize into lognormal logprob
+            # Reparametrize into lognormal likelihood
             loc, scale = model.reparametrize(mu=aggregate_predicted_means_2d)
             aggregate_prediction_2d = torch.distributions.LogNormal(loc, scale)
-            log_prob = aggregate_prediction_2d.log_prob(z)
+
+            # Take logprob of τ to estimate expected log-likelihood
+            log_prob = aggregate_prediction_2d.log_prob(τ)
             ell_MC = log_prob.mean()
 
-            # Compute KL term and adjust for minibatch size
+            # Compute KL term and adjust for batch size
             kl_divergence = model.variational_strategy.kl_divergence().mul(batch_size / n_samples)
 
             # Take gradient step
@@ -161,50 +164,52 @@ def fit(model, data, cfg):
 
 
 def predict(model, data, cfg):
-    # Initialize empty tensor
-    prediction_3d_means = torch.zeros_like(data.h_by_column_std)
-    prediction_3d_stddevs = torch.zeros_like(data.h_by_column_std)
+    # Initialize empty tensor for lognormal locations and scales
+    prediction_3d_locs = torch.zeros_like(data.h_by_column_std)
+    prediction_3d_scales = torch.zeros_like(data.h_by_column_std)
     h_stddev = data.h_by_column.std().to(device)
+
+    # Extract useful variables
+    n_samples = len(data.τ)
+    L = cfg['model']['L']
 
     # Setup index iteration and progress bar
     indices = torch.arange(len(data.x_by_column_std)).to(device)
-    n_samples = len(data.z)
-    L = cfg['model']['L']
     batch_size = cfg['evaluation']['batch_size']
     batch_bar = Bar("Inference", max=n_samples // batch_size)
 
-    # Set seed for prediction
-    torch.random.manual_seed(cfg['training']['seed'])
-
+    # Predict over batches of columns for computational efficiency
     with torch.no_grad():
         for idx in indices.split(batch_size):
-            # Predict on standardized 3D covariates
+            # Predict variational posterior on standardized 3D covariates
             qf_by_column = model(data.x_by_column_std[idx])
 
             # Register in grid
-            prediction_3d_means[idx] = qf_by_column.mean - data.h_by_column_std[idx] / L
-            prediction_3d_stddevs[idx] = qf_by_column.stddev
+            prediction_3d_locs[idx] = qf_by_column.mean - data.h_by_column_std[idx] / L
+            prediction_3d_scales[idx] = qf_by_column.stddev
 
             # Update progress bar
             batch_bar.suffix = f"{idx[-1]}/{n_samples} columns"
             batch_bar.next()
 
         # Make up for height standardization in integration
-        prediction_3d_means.sub_(torch.log(h_stddev))
+        prediction_3d_locs.sub_(torch.log(h_stddev))
 
-        # Rescale predictions by τ/∫φdh
+        # Compute posterior mean E[φ|τ] from lognormal location and scale
+        Eφ_τ = torch.exp(prediction_3d_locs + 0.5 * prediction_3d_scales.square())
+
+        # Rescale predictions by τ/∫E[φ|τ]dh
         def trpz(grid):
             aggregated_grid = -torch.trapz(y=grid, x=data.h_by_column.unsqueeze(-1), dim=-2)
             return aggregated_grid
-        φ = torch.exp(prediction_3d_means + 0.5 * prediction_3d_stddevs.square())
-        aggregate_prediction_2d = trpz(φ.unsqueeze(-1)).squeeze()
-        correction = torch.log(data.z_smooth) - torch.log(aggregate_prediction_2d)
-        prediction_3d_means.add_(correction.unsqueeze(-1))
+        aggregate_Eφ_τ = trpz(Eφ_τ.unsqueeze(-1)).squeeze()
+        correction = torch.log(data.τ_smooth) - torch.log(aggregate_Eφ_τ)
+        prediction_3d_locs.add_(correction.unsqueeze(-1))
 
         # Make latent vertical profile φ distribution
-        prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_means.cpu(), prediction_3d_stddevs.cpu())
+        prediction_3d_dist = torch.distributions.LogNormal(prediction_3d_locs.cpu(), prediction_3d_scales.cpu())
 
-        # Make bext observation model distribution
+        # Make bext observation model distribution from φ
         φ = prediction_3d_dist.sample((cfg['evaluation']['n_samples'],))
         sigma_ext = torch.tensor(cfg['evaluation']['sigma_ext'])
         loc = torch.log(φ.clip(min=torch.finfo(torch.float64).eps)) - sigma_ext.square().div(2)

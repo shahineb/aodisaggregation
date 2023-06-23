@@ -11,20 +11,20 @@ dataset:
   3d_covariates:
     - height
 
-  # Variable to use as 2D aggregate target
+  # Variable to use as 2D aggregate target (i.e. AOD)
   target: TAU_2D_550nm
 
   # Spatially smoothed 2D aggregate target used for rescaling
   smoothed_target: SMOOTH_TAU_2D_550nm
 
-  # Variable corresponding to unobserved groundtruth 3D field
+  # Variable corresponding to unobserved groundtruth 3D field (i.e. bext)
   groundtruth: ALFA_AER_533nm
 
 
 
 # MODEL SPECIFICATIONS
 model:
-  # Idealized profile heigthscale parameter
+  # Idealized profile heigthscale parameter -- see notebooks/choose-exponential-height-scale.ipynb
   L: 0.8708489560412566
 
 
