@@ -49,8 +49,8 @@ class HaversineMaternKernel(kernels.MaternKernel):
         latlon1 = self.mu_latlon + self.sigma_latlon * latlon1_std.detach()
         latlon2 = self.mu_latlon + self.sigma_latlon * latlon2_std.detach()
 
-        distance = np.stack([haversine_distances(foo, bar) for (foo, bar) in zip(latlon1, latlon2)])
-        distance = torch.from_numpy(distance).float().div(self.lengthscale)
+        distance = np.stack([haversine_distances(foo.cpu(), bar.cpu()) for (foo, bar) in zip(latlon1, latlon2)])
+        distance = torch.from_numpy(distance).float().to(x1.device).div(self.lengthscale)
         exp_component = torch.exp(-math.sqrt(self.nu * 2) * distance)
 
         if self.nu == 0.5:
