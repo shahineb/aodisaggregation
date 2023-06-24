@@ -16,7 +16,8 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
-from gpytorch import kernels
+from gpytorch import kernels, constraints
+import math
 from src.preprocessing import make_data
 from src.models import AggregateLogNormalSVGP
 from src.kernels import HaversineMaternKernel
@@ -48,6 +49,10 @@ def main(args, cfg):
 
 def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
+    data.x_std[..., 2] = data.x[..., 2]
+    data.x_std[..., 3] = data.x[..., 3]
+    data.x_by_column_std[..., 2] = data.x[..., 2].reshape(data.x_by_column_std.size(0), data.x_by_column_std.size(1))
+    data.x_by_column_std[..., 3] = data.x[..., 3].reshape(data.x_by_column_std.size(0), data.x_by_column_std.size(1))
     data = data._replace(x_std=data.x_std.to(device),
                          x_by_column_std=data.x_by_column_std.to(device),
                          τ=data.τ.to(device),
@@ -66,7 +71,7 @@ def make_model(cfg, data):
 
     # Define GP kernel
     time_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0]))
-    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3])
+    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(math.pi / 2))
     meteo_kernel = kernels.MaternKernel(nu=0.5, ard_num_dims=4, active_dims=[4, 5, 6, 7])
     kernel = time_kernel * latlon_kernel + meteo_kernel
 

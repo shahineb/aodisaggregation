@@ -17,7 +17,9 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
-from gpytorch import kernels
+import math
+from gpytorch import kernels, constraints
+from gpytorch import settings
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 
@@ -52,6 +54,10 @@ def main(args, cfg):
 
 def migrate_to_device(data, device):
     # These are the only tensors needed on device to run this experiment
+    data.x_std[..., 2] = data.x[..., 2]
+    data.x_std[..., 3] = data.x[..., 3]
+    data.x_by_column_std[..., 2] = data.x[..., 2].reshape(data.x_by_column_std.size(0), data.x_by_column_std.size(1))
+    data.x_by_column_std[..., 3] = data.x[..., 3].reshape(data.x_by_column_std.size(0), data.x_by_column_std.size(1))
     data = data._replace(x_std=data.x_std.to(device),
                          x_by_column_std=data.x_by_column_std.to(device),
                          τ=data.τ.to(device),
@@ -69,8 +75,8 @@ def make_model(cfg, data):
         return aggregated_grid
 
     # Define GP kernel
-    time_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0]))
-    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3])
+    time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
+    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(math.pi / 2))
     kernel = time_kernel * latlon_kernel
 
     # Fix random seed for inducing points intialization
@@ -124,12 +130,23 @@ def fit(model, data, cfg):
             # Zero-out remaining gradients
             optimizer.zero_grad()
 
+            ###
+            # foo = model.kernel.kernels[0].lengthscale.detach()
+            # bar = model.kernel.kernels[1].lengthscale.detach()
+            # fooq = model.variational_strategy.inducing_points.detach()
+            # print(fooq[:, 2])
+            ###
+
             # Compute variational posterior q(f)
             qf_by_column = model(x_by_column_std)
 
             # Draw a sample from the variational posterior
-            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
-            fs = fs.add(qf_by_column.mean).squeeze()
+            with settings.cholesky_jitter(1e-3):
+                fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
+                fs = fs.add(qf_by_column.mean).squeeze()
+                # foo = qf_by_column.lazy_covariance_matrix.evaluate().detach()
+                # print(torch.tensor([torch.real(torch.linalg.eigvals(hh)).min().item() for hh in foo]))
+                # raise RuntimeError
 
             # Transform into extinction predictions and integrate
             predicted_means = model.transform(fs)
@@ -154,11 +171,37 @@ def fit(model, data, cfg):
             loss.backward()
             optimizer.step()
 
+            ###
+            # print(fooq[:, 0].round(decimals=2))
+            ###
+
             # Update progress bar
             epoch_ell += ell_MC.item()
             epoch_kl += kl_divergence.item()
-            batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e}"
+            # batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e}"
+            # batch_bar.next()
+
+            if torch.isnan(model.variational_strategy.inducing_points).any():
+                foo = qf_by_column.lazy_covariance_matrix.evaluate().detach()
+                print([torch.real(torch.linalg.eigvals(hh)).min().round(decimals=3).item() for hh in foo])
+
+                # print(foo)
+                # print(bar)
+                # print(model.kernel.kernels[0].lengthscale)
+                # print(model.kernel.kernels[1].lengthscale)
+                # print(kl_divergence)
+                # print(ell_MC)
+                # print(torch.isnan(fooq).any(dim=0))
+                # print(torch.isnan(model.variational_strategy.inducing_points).any(dim=0))
+                # print(torch.isnan(model.variational_strategy.variational_distribution.mean).any())
+                # print(torch.isnan(model.variational_strategy.variational_distribution.covariance_matrix).any())
+                raise RuntimeError('here')
+            ###
+            ltime = model.kernel.kernels[0].lengthscale.detach().item()
+            llatlon = model.kernel.kernels[1].lengthscale.detach().item()
+            batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e} | lt {ltime:e} | llatlon {llatlon:e}"
             batch_bar.next()
+            ###
 
         # Complete progress bar
         epoch_bar.next()
