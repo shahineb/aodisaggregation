@@ -25,13 +25,21 @@ def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, calibration_se
     scores_3d_isotropic_all = compute_3d_isotropic_metrics(prediction_3d, groundtruth_3d)
     scores_3d_probabilistic_all = compute_3d_probabilistic_metrics(bext_dist, groundtruth_3d, calibration_seed, n_test_samples, ideal)
 
-    # Compute metrics over boundary layer only
+    # Compute metrics in boundary layer only
     groundtruth_3d_bl = groundtruth_3d[..., 22:]
     φ_mean_bl = prediction_3d_dist.mean[..., 22:]
     bext_loc_bl, bext_scale_bl = bext_dist.loc[..., 22:], bext_dist.scale[..., 22:]
     bext_dist_bl = torch.distributions.LogNormal(bext_loc_bl, bext_scale_bl)
     scores_3d_isotropic_boundary = compute_3d_isotropic_metrics(φ_mean_bl.cpu(), groundtruth_3d_bl)
     scores_3d_probabilistic_boundary = compute_3d_probabilistic_metrics(bext_dist_bl, groundtruth_3d_bl, calibration_seed, n_test_samples, ideal)
+
+    # Compute metrics over boundary layer only
+    groundtruth_3d_abl = groundtruth_3d[..., :22]
+    φ_mean_abl = prediction_3d_dist.mean[..., :22]
+    bext_loc_abl, bext_scale_abl = bext_dist.loc[..., :22], bext_dist.scale[..., :22]
+    bext_dist_abl = torch.distributions.LogNormal(bext_loc_abl, bext_scale_abl)
+    scores_3d_isotropic_above_boundary = compute_3d_isotropic_metrics(φ_mean_abl.cpu(), groundtruth_3d_abl)
+    scores_3d_probabilistic_above_boundary = compute_3d_probabilistic_metrics(bext_dist_abl, groundtruth_3d_abl, calibration_seed, n_test_samples, ideal)
 
     # Encapsulate scores into output dictionnary
     output = {'all': {'deterministic': scores_3d_isotropic_all,
@@ -40,7 +48,10 @@ def compute_scores(prediction_3d_dist, bext_dist, groundtruth_3d, calibration_se
 
               'boundary_layer': {'deterministic': scores_3d_isotropic_boundary,
                                  'probabilistic': scores_3d_probabilistic_boundary
-                                 }
+                                 },
+              'above_boundary_layer': {'deterministic': scores_3d_isotropic_above_boundary,
+                                       'probabilistic': scores_3d_probabilistic_above_boundary
+                                       },
               }
     return output
 
