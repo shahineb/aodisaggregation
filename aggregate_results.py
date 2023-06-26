@@ -39,12 +39,16 @@ def main(args):
             scores.append(score)
 
     # Encapsulate in dataframe and aggregate
-    scores_df = pd.DataFrame(data=scores, index=seeds).aggregate(['mean', 'std'])
+    scores_df = pd.DataFrame(data=scores, index=seeds)
+    aggregate_scores_df = scores_df.aggregate(['mean', 'std']).T
+    aggregate_scores_df['values'] = list(scores_df.values.T)
+    aggregate_scores_df = aggregate_scores_df.T
+    print(aggregate_scores_df)
 
     # Dump aggregate scores
-    scores_df.to_json(os.path.join(args['--o'], 'scores.json'))
+    aggregate_scores_df.to_json(os.path.join(args['--o'], 'scores.json'))
     if args['--tex']:
-        scores_df.to_latex(os.path.join(args['--o'], 'scores.tex'))
+        aggregate_scores_df.to_latex(os.path.join(args['--o'], 'scores.tex'))
     logging.info(f"Dumped aggregate scores under {args['--o']}")
 
 
