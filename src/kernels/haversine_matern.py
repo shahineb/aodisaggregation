@@ -1,26 +1,30 @@
 import math
 import torch
-import numpy as np
-from sklearn.metrics.pairwise import haversine_distances
-import gpytorch
 from gpytorch import kernels
+
+
+eps = torch.finfo(torch.float32).eps
+
+
+def batch_haversine_distances(latlon1, latlon2):
+    latlon1, latlon2 = torch.deg2rad(latlon1), torch.deg2rad(latlon2)
+    diff = latlon2.unsqueeze(-3) - latlon1.unsqueeze(-2) + eps
+    dlat = diff[..., 0]
+    dlon = diff[..., 1]
+    coslat1 = torch.cos(latlon1[..., 0])
+    coslat2 = torch.cos(latlon2[..., 0])
+    coslat1_coslat2 = torch.bmm(coslat1.unsqueeze(2), coslat2.unsqueeze(1))
+    a = torch.sin(dlat / 2)**2 + coslat1_coslat2 * torch.sin(dlon / 2)**2
+    dist = 2 * torch.asin(torch.sqrt(a + eps).clip(max=1 - eps))
+    return dist
 
 
 class HaversineMaternKernel(kernels.MaternKernel):
     _deg2rad = math.pi / 180
     _radius = 6371
 
-    def __init__(self, nu, **kwargs):
-        super().__init__(nu=nu, **kwargs)
-        self.register_buffer('mu_latlon', torch.tensor([0., 179.0625]))
-        self.register_buffer('sigma_latlon', torch.tensor([51.6863, 103.9217]))
-
     def forward(self, x1, x2, **kwargs):
-        latlon1 = torch.deg2rad(x1).detach()
-        latlon2 = torch.deg2rad(x2).detach()
-
-        hav = np.stack([haversine_distances(foo.cpu(), bar.cpu()) for (foo, bar) in zip(latlon1, latlon2)])
-        distance = torch.from_numpy(hav).float().to(x1.device).div(self.lengthscale)
+        distance = batch_haversine_distances(x1, x2).div(self.lengthscale)
         exp_component = torch.exp(-math.sqrt(self.nu * 2) * distance)
 
         if self.nu == 0.5:
@@ -31,6 +35,4 @@ class HaversineMaternKernel(kernels.MaternKernel):
             constant_component = (math.sqrt(5) * distance).add(1).add(5.0 / 3.0 * distance**2)
 
         covar = constant_component * exp_component
-        if covar.size(-1) == covar.size(-2):
-            covar = gpytorch.add_jitter(covar)
         return covar

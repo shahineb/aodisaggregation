@@ -17,7 +17,6 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
-import math
 from gpytorch import kernels, constraints
 from gpytorch import settings
 
@@ -76,7 +75,7 @@ def make_model(cfg, data):
 
     # Define GP kernel
     time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
-    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(math.pi / 2))
+    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(1.5))
     kernel = time_kernel * latlon_kernel
 
     # Fix random seed for inducing points intialization
@@ -105,6 +104,9 @@ def fit(model, data, cfg):
             τ = data.τ[idx]
             yield x_by_column_std, h_by_column_std, τ
 
+    # Tuning of inducing locations is unstable - deactivate
+    model.variational_strategy.inducing_points.requires_grad = False
+
     # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
@@ -130,13 +132,6 @@ def fit(model, data, cfg):
             # Zero-out remaining gradients
             optimizer.zero_grad()
 
-            ###
-            # foo = model.kernel.kernels[0].lengthscale.detach()
-            # bar = model.kernel.kernels[1].lengthscale.detach()
-            # fooq = model.variational_strategy.inducing_points.detach()
-            # print(fooq[:, 2])
-            ###
-
             # Compute variational posterior q(f)
             qf_by_column = model(x_by_column_std)
 
@@ -144,9 +139,6 @@ def fit(model, data, cfg):
             with settings.cholesky_jitter(1e-3):
                 fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
                 fs = fs.add(qf_by_column.mean).squeeze()
-                # foo = qf_by_column.lazy_covariance_matrix.evaluate().detach()
-                # print(torch.tensor([torch.real(torch.linalg.eigvals(hh)).min().item() for hh in foo]))
-                # raise RuntimeError
 
             # Transform into extinction predictions and integrate
             predicted_means = model.transform(fs)
@@ -171,37 +163,17 @@ def fit(model, data, cfg):
             loss.backward()
             optimizer.step()
 
-            ###
-            # print(fooq[:, 0].round(decimals=2))
-            ###
-
             # Update progress bar
             epoch_ell += ell_MC.item()
             epoch_kl += kl_divergence.item()
-            # batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e}"
-            # batch_bar.next()
-
-            if torch.isnan(model.variational_strategy.inducing_points).any():
-                foo = qf_by_column.lazy_covariance_matrix.evaluate().detach()
-                print([torch.real(torch.linalg.eigvals(hh)).min().round(decimals=3).item() for hh in foo])
-
-                # print(foo)
-                # print(bar)
-                # print(model.kernel.kernels[0].lengthscale)
-                # print(model.kernel.kernels[1].lengthscale)
-                # print(kl_divergence)
-                # print(ell_MC)
-                # print(torch.isnan(fooq).any(dim=0))
-                # print(torch.isnan(model.variational_strategy.inducing_points).any(dim=0))
-                # print(torch.isnan(model.variational_strategy.variational_distribution.mean).any())
-                # print(torch.isnan(model.variational_strategy.variational_distribution.covariance_matrix).any())
-                raise RuntimeError('here')
-            ###
-            ltime = model.kernel.kernels[0].lengthscale.detach().item()
-            llatlon = model.kernel.kernels[1].lengthscale.detach().item()
-            batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e} | lt {ltime:e} | llatlon {llatlon:e}"
+            batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e}"
             batch_bar.next()
-            ###
+
+            # ltime = model.kernel.kernels[0].lengthscale.detach().item()
+            # llatlon = model.kernel.kernels[1].lengthscale.detach().item()
+            # batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e} | lt {ltime:e} | llatlon {llatlon:e}"
+            # batch_bar.next()
+            # ###
 
         # Complete progress bar
         epoch_bar.next()

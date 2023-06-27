@@ -18,7 +18,6 @@ from docopt import docopt
 from progress.bar import Bar
 import torch
 from gpytorch import kernels, constraints
-import math
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 
@@ -75,7 +74,7 @@ def make_model(cfg, data):
 
     # Define GP kernel
     time_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0]))
-    latlon_kernel = kernels.ScaleKernel(HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(math.pi / 2)))
+    latlon_kernel = kernels.ScaleKernel(HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(1.5)))
     pressure_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=1, active_dims=[4]))
     st_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=1, active_dims=[5]))
     relhum_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=0.5, ard_num_dims=1, active_dims=[6]))
