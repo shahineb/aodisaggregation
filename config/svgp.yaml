@@ -29,7 +29,7 @@ dataset:
 # MODEL SPECIFICATIONS
 model:
   # Number of inducing points
-  n_inducing_points: 60
+  n_inducing_points: 100
 
   # Idealized profile heigthscale parameter -- see notebooks/choose-exponential-height-scale.ipynb
   L: 0.8708489560412566
@@ -64,11 +64,11 @@ evaluation:
   batch_size: 50
 
   # Number of MC samples used for bext posterior estimation
-  # n_samples: 1000
-  n_samples: 100
+  n_samples: 1000
+  # n_samples: 100
 
   # bext observation model calibrated scale parameter
-  sigma_ext: 2.120
+  sigma_ext: 2.
 
   # Number of test columns (to speed up probabilistic evaluation)
   n_test_samples: 10000
