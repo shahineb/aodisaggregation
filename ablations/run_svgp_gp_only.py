@@ -16,6 +16,7 @@ import yaml
 import logging
 from docopt import docopt
 from progress.bar import Bar
+import math
 import torch
 from gpytorch import kernels, constraints
 
@@ -74,7 +75,7 @@ def make_model(cfg, data):
 
     # Define GP kernel
     time_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0]))
-    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(1.5))
+    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(math.pi / math.sqrt(12)))
     meteo_kernel = kernels.MaternKernel(nu=0.5, ard_num_dims=4, active_dims=[4, 5, 6, 7])
     kernel = time_kernel * latlon_kernel + meteo_kernel
 

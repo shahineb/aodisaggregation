@@ -17,6 +17,7 @@ import logging
 from docopt import docopt
 from progress.bar import Bar
 import torch
+import math
 from gpytorch import kernels, constraints
 from gpytorch import settings
 
@@ -75,7 +76,7 @@ def make_model(cfg, data):
 
     # Define GP kernel
     time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
-    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(1.5))
+    latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(math.pi / math.sqrt(12)))
     kernel = time_kernel * latlon_kernel
 
     # Fix random seed for inducing points intialization
@@ -105,7 +106,7 @@ def fit(model, data, cfg):
             yield x_by_column_std, h_by_column_std, τ
 
     # Tuning of inducing locations is unstable - deactivate
-    model.variational_strategy.inducing_points.requires_grad = False
+    # model.variational_strategy.inducing_points.requires_grad = False
 
     # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
