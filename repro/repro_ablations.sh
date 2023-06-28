@@ -62,18 +62,6 @@ do
 done
 
 
-# # ABLATION 6 : joint Matern kernel
-# OUTDIR=experiments/data/outputs/ablation/svgp-jointmatern-kernel/
-# for SEED in {1..20};
-# do
-#   DIRNAME=seed_$SEED
-#   python ablations/run_svgp_jointmatern_kernel.py --seed=$SEED --cfg=$SVGP_CFG --o=$OUTDIR/$DIRNAME --device=$DEVICE
-# done
-
-
-
-
-
 
 
 

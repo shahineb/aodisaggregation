@@ -29,7 +29,7 @@ dataset:
 # MODEL SPECIFICATIONS
 model:
   # Number of inducing points
-  n_inducing_points: 100
+  n_inducing_points: 200
 
   # Idealized profile heigthscale parameter -- see notebooks/choose-exponential-height-scale.ipynb
   L: 0.8708489560412566
