@@ -1,5 +1,8 @@
 # AODisaggregation: toward global aerosol vertical profiles
 
+[![DOI](https://zenodo.org/badge/408793224.svg)](https://zenodo.org/doi/10.5281/zenodo.11028724)
+
+
 ## Getting started
 
 Download curated dataset to run experiments [here](https://www.dropbox.com/s/m5p9ztdkqyfvud3/aodisaggregation_emmisions_test_6.3_ACCMIP_200806.06_echam.nc?dl=0).
