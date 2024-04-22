@@ -110,8 +110,8 @@ def _make_x_tensors(cfg, dataset, standard_dataset):
 
     """
     # Convert into pytorch tensors
-    x_grid_std = make_3d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['3d_covariates'])
-    x_grid = make_3d_covariates_tensors(dataset=dataset, variables_keys=cfg['dataset']['3d_covariates'])
+    x_grid_std = make_3d_covariates_tensors(dataset=standard_dataset, variables_keys=cfg['dataset']['3d_covariates'], standardize_coords=True)
+    x_grid = make_3d_covariates_tensors(dataset=dataset, variables_keys=cfg['dataset']['3d_covariates'], standardize_coords=False)
 
     # Reshape tensors
     x_by_column_std = x_grid_std.reshape(-1, x_grid_std.size(-2), x_grid_std.size(-1))

@@ -1,7 +1,7 @@
 """
-Description : Runs sparse variational GP aerosol vertical profile reconstruction
+Description : Runs sparse variational GP aerosol vertical profile reconstruction with spatiotemporal inputs only
 
-Usage: run_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_svgp_spatiotemporal_only.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -11,13 +11,18 @@ Options:
   --plot                           Outputs plots.
 """
 import os
+import sys
 import yaml
 import logging
 from docopt import docopt
 from progress.bar import Bar
-import math
 import torch
+import math
 from gpytorch import kernels, constraints
+from gpytorch import settings
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
+
 from src.preprocessing import make_data
 from src.models import AggregateLogNormalSVGP
 from src.kernels import HaversineMaternKernel
@@ -70,10 +75,9 @@ def make_model(cfg, data):
         return aggregated_grid
 
     # Define GP kernel
-    time_kernel = kernels.ScaleKernel(kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0]))
+    time_kernel = kernels.MaternKernel(nu=1.5, ard_num_dims=1, active_dims=[0])
     latlon_kernel = HaversineMaternKernel(nu=1.5, active_dims=[2, 3], lengthscale_constraint=constraints.LessThan(math.pi / math.sqrt(12)))
-    meteo_kernel = kernels.MaternKernel(nu=0.5, ard_num_dims=4, active_dims=[4, 5, 6, 7])
-    kernel = time_kernel * latlon_kernel + meteo_kernel
+    kernel = time_kernel * latlon_kernel
 
     # Fix random seed for inducing points intialization
     torch.random.manual_seed(cfg['model']['seed'])
@@ -100,6 +104,9 @@ def fit(model, data, cfg):
             h_by_column_std = data.h_by_column_std[idx]
             τ = data.τ[idx]
             yield x_by_column_std, h_by_column_std, τ
+
+    # Tuning of inducing locations is unstable - deactivate
+    # model.variational_strategy.inducing_points.requires_grad = False
 
     # Define optimizer
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
@@ -130,8 +137,9 @@ def fit(model, data, cfg):
             qf_by_column = model(x_by_column_std)
 
             # Draw a sample from the variational posterior
-            fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
-            fs = fs.add(qf_by_column.mean).squeeze()
+            with settings.cholesky_jitter(1e-3):
+                fs = qf_by_column.lazy_covariance_matrix.zero_mean_mvn_samples(num_samples=1)
+                fs = fs.add(qf_by_column.mean).squeeze()
 
             # Transform into extinction predictions and integrate
             predicted_means = model.transform(fs)
@@ -161,6 +169,12 @@ def fit(model, data, cfg):
             epoch_kl += kl_divergence.item()
             batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e}"
             batch_bar.next()
+
+            # ltime = model.kernel.kernels[0].lengthscale.detach().item()
+            # llatlon = model.kernel.kernels[1].lengthscale.detach().item()
+            # batch_bar.suffix = f"ELL {epoch_ell / (i + 1):e} | KL {epoch_kl / (i + 1):e} | lt {ltime:e} | llatlon {llatlon:e}"
+            # batch_bar.next()
+            # ###
 
         # Complete progress bar
         epoch_bar.next()

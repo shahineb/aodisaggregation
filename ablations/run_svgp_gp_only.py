@@ -1,7 +1,7 @@
 """
-Description : Runs sparse variational GP aerosol vertical profile reconstruction
+Description : Runs sparse variational GP aerosol vertical profile reconstruction without idealised vertical profile (GP only)
 
-Usage: run_svgp_vertical_profile.py  [options] --cfg=<path_to_config> --o=<output_dir>
+Usage: run_svgp_gp_only.py  [options] --cfg=<path_to_config> --o=<output_dir>
 
 Options:
   --cfg=<path_to_config>           Path to YAML configuration file to use.
@@ -11,6 +11,7 @@ Options:
   --plot                           Outputs plots.
 """
 import os
+import sys
 import yaml
 import logging
 from docopt import docopt
@@ -18,6 +19,9 @@ from progress.bar import Bar
 import math
 import torch
 from gpytorch import kernels, constraints
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
+
 from src.preprocessing import make_data
 from src.models import AggregateLogNormalSVGP
 from src.kernels import HaversineMaternKernel
@@ -105,7 +109,6 @@ def fit(model, data, cfg):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=cfg['training']['lr'])
 
     # Extract useful variables
-    L = cfg['model']['L']
     n_epochs = cfg['training']['n_epochs']
     batch_size = cfg['training']['batch_size']
     n_samples = len(data.τ)
@@ -134,8 +137,7 @@ def fit(model, data, cfg):
             fs = fs.add(qf_by_column.mean).squeeze()
 
             # Transform into extinction predictions and integrate
-            predicted_means = model.transform(fs)
-            predicted_means_3d = predicted_means.mul(torch.exp(-h_by_column_std / L))
+            predicted_means_3d = model.transform(fs)
             aggregate_predicted_means_2d = -torch.trapz(y=predicted_means_3d.unsqueeze(-1),
                                                         x=h_by_column_std.unsqueeze(-1),
                                                         dim=-2).squeeze()
@@ -176,7 +178,6 @@ def predict(model, data, cfg):
 
     # Extract useful variables
     n_samples = len(data.τ)
-    L = cfg['model']['L']
 
     # Setup index iteration and progress bar
     indices = torch.arange(len(data.x_by_column_std)).to(device)
@@ -190,7 +191,7 @@ def predict(model, data, cfg):
             qf_by_column = model(data.x_by_column_std[idx])
 
             # Register in grid
-            prediction_3d_locs[idx] = qf_by_column.mean - data.h_by_column_std[idx] / L
+            prediction_3d_locs[idx] = qf_by_column.mean
             prediction_3d_scales[idx] = qf_by_column.stddev
 
             # Update progress bar
