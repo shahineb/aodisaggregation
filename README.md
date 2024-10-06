@@ -66,10 +66,13 @@ $ (venv) pip install -r requirements.txt
 
 ## References
 ```
-@article{bouabid2022aodisaggregation,
-  title={{AODisaggregation: toward global aerosol vertical profiles}},
-  author={Bouabid, Shahine and Watson-Parris, Duncan and Stefanović, Sofija and Nenes, Athanasios and Sejdinovic, Dino},
-  journal={arXiv preprint arXiv:2205.04296},
-  year={2022}
+@article{bouabid2024aerosol,
+  title={Aerosol optical depth disaggregation: toward global aerosol vertical profiles},
+  author={Bouabid, Shahine and Watson-Parris, Duncan and Stefanovi{\'c}, Sofija and Nenes, Athanasios and Sejdinovic, Dino},
+  journal={Environmental Data Science},
+  volume={3},
+  pages={e16},
+  year={2024},
+  publisher={Cambridge University Press}
 }
 ```
